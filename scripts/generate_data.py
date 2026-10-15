@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import yaml
 
+from data_generation.labels import generate_labels
 from data_generation.profiles import generate_behavior_profiles
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -923,6 +924,16 @@ def main() -> None:
         behavior_profiles,
     )
 
+    labels = generate_labels(
+        customers=customers,
+        usage_events=usage_events,
+        recharges=recharges,
+        network_events=network_events,
+        risk_events=risk_events,
+        positive_rate=config["data"]["labels"]["positive_rate"],
+        seed=config["data"]["seed"],
+    )
+
     save_dataset(
         customers,
         "customers.parquet",
@@ -948,6 +959,13 @@ def main() -> None:
         "risk_events.parquet",
     )
 
+    save_dataset(
+    labels,
+    "labels.parquet",
+    )
+
+    print(
+    f"Positive rate: {labels['risk_label'].mean():.4f}")
 
 if __name__ == "__main__":
     main()
