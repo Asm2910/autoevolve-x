@@ -1,0 +1,37 @@
+data:
+  seed: 42
+
+  customers:
+    n_rows: 20000
+
+  usage_events:
+    n_rows: 500000
+
+  recharges:
+    n_rows: 100000
+
+  network_events:
+    n_rows: 250000
+
+  risk_events:
+    n_rows: 15000
+
+  labels:
+    positive_rate: 0.05
+
+  time_range:
+    start: "2026-01-01"
+    end: "2026-06-30"
+
+  splits:
+    train:
+      start: "2026-01-01"
+      end: "2026-04-30"
+
+    validation:
+      start: "2026-05-01"
+      end: "2026-05-31"
+
+    test:
+      start: "2026-06-01"
+      end: "2026-06-30"

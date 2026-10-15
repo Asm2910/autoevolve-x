@@ -1,0 +1,24 @@
+swarm:
+  enabled: true
+  max_parallel_agents: 4
+
+supervisor:
+  enabled: true
+
+data_agent:
+  enabled: true
+
+feature_agent:
+  enabled: true
+
+experiment_agent:
+  enabled: true
+
+evaluation_agent:
+  enabled: true
+
+reflection_agent:
+  enabled: true
+
+memory_agent:
+  enabled: true

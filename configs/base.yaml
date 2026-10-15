@@ -1,0 +1,14 @@
+project:
+  name: autoevolve-x
+  version: "0.1.0"
+  environment: development
+
+runtime:
+  random_seed: 42
+  log_level: INFO
+
+paths:
+  data_dir: data
+  model_dir: models
+  experiment_dir: experiments
+  log_dir: logs

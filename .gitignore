@@ -41,10 +41,16 @@ logs/
 
 # Generated data
 data/raw/
+data/interim/
 data/processed/
+data/features/
 
 # Model artifacts
 models/artifacts/
+
+# Experiment outputs
+experiments/runs/
+experiments/outputs/
 
 # Temporary files
 tmp/

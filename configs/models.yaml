@@ -1,0 +1,21 @@
+models:
+  logistic_regression:
+    enabled: true
+
+  random_forest:
+    enabled: true
+
+  extra_trees:
+    enabled: true
+
+  xgboost:
+    enabled: true
+
+  lightgbm:
+    enabled: true
+
+  catboost:
+    enabled: true
+
+  mlp:
+    enabled: true

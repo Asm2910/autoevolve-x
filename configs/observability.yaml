@@ -1,0 +1,20 @@
+observability:
+  enabled: true
+
+  metrics:
+    enabled: true
+
+  logging:
+    enabled: true
+    level: INFO
+
+  tracing:
+    enabled: false
+
+prometheus:
+  enabled: true
+  port: 9090
+
+grafana:
+  enabled: true
+  port: 3000

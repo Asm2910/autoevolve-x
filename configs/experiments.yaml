@@ -1,0 +1,21 @@
+experiment:
+  max_iterations: 10
+  primary_metric: pr_auc
+  improvement_threshold: 0.01
+
+  train_size: 0.70
+  validation_size: 0.15
+  test_size: 0.15
+
+  early_stopping:
+    enabled: true
+    patience: 3
+
+search:
+  max_candidates_per_iteration: 3
+
+  strategies:
+    - model_selection
+    - hyperparameter_tuning
+    - feature_selection
+    - threshold_optimization
