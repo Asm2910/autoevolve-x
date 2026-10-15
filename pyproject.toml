@@ -1,0 +1,42 @@
+[project]
+name = "autoevolve-x"
+version = "0.1.0"
+description = "A self-improving multi-agent ML experimentation platform"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+
+authors = [
+    { name = "Asm2910" }
+]
+
+dependencies = []
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+exclude = [
+    ".git",
+    ".venv",
+    "data",
+    "models",
+    "notebooks",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "F",
+    "I",
+    "B",
+    "UP",
+]
+
+ignore = [
+    "E501",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra"

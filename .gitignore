@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment variables
+.env
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Ruff
+.ruff_cache/
+
+# Type checking
+.mypy_cache/
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.cursor/
+
+# MLflow
+mlruns/
+artifacts/
+
+# Logs
+logs/
+
+# Generated data
+data/raw/
+data/processed/
+
+# Model artifacts
+models/artifacts/
+
+# Temporary files
+tmp/
+temp/
