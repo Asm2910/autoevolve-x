@@ -257,26 +257,46 @@ def generate_labels(
     )
 
     # ------------------------------------------------------------------
-    # 8. Generate controlled class imbalance
-    # ------------------------------------------------------------------
+# 8. Generate controlled class imbalance
+# ------------------------------------------------------------------
 
-    threshold = features[
-        "latent_risk_score"
-    ].quantile(1 - positive_rate)
+    target_positives = int(
+    round(len(features) * positive_rate)
+)
 
-    features["risk_label"] = (
-        features["latent_risk_score"] >= threshold
-    ).astype(int)
+# Add independent noise so the relationship between the latent
+# risk process and the final label is not perfectly deterministic.
+    ranking_noise = rng.normal(
+    loc=0.0,
+    scale=0.05,
+    size=len(features),
+)
 
-    # ------------------------------------------------------------------
-    # 9. Final label dataset
-    # ------------------------------------------------------------------
+    label_score = (
+    features["latent_risk_score"]
+    + ranking_noise
+)
+
+    positive_indices = np.argsort(
+    label_score
+)[-target_positives:]
+
+    features["risk_label"] = 0
+
+    features.loc[
+    features.index[positive_indices],
+    "risk_label",
+] = 1
+
+# ------------------------------------------------------------------
+# 9. Final label dataset
+# ------------------------------------------------------------------
 
     labels = features[
-        [
-            "subscriber_id",
-            "risk_label",
-        ]
-    ].copy()
+    [
+        "subscriber_id",
+        "risk_label",
+    ]
+].copy()
 
     return labels

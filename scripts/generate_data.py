@@ -277,27 +277,36 @@ def generate_usage_events(
         * (0.5 + intensity)
     )
 
-    international_calls = rng.binomial(
-        np.maximum(call_count, 1),
+    international_calls = np.where(
+    call_count > 0,
+    rng.binomial(
+        call_count,
         np.clip(
             0.02 + 0.35 * international_tendency,
             0,
             1,
         ),
-    )
+    ),
+    0,
+)
 
     short_call_probability = np.clip(
-        0.15
-        + 0.35 * international_tendency
-        + 0.15 * destination_tendency,
-        0,
-        0.95,
-    )
+    0.15
+    + 0.35 * international_tendency
+    + 0.15 * destination_tendency,
+    0,
+    0.95,
+)
 
-    short_calls = rng.binomial(
-        np.maximum(call_count, 1),
+    short_calls = np.where(
+    call_count > 0,
+    rng.binomial(
+        call_count,
         short_call_probability,
-    )
+    ),
+    0,
+)
+
 
     unique_destinations = np.maximum(
         1,
@@ -352,6 +361,7 @@ def generate_recharges(
     customers: pd.DataFrame,
     behavior_profiles: pd.DataFrame,
 ) -> pd.DataFrame:
+
     """Generate synthetic recharge events."""
     seed = config["data"]["seed"] + 2
     n_rows = config["data"]["recharges"]["n_rows"]
