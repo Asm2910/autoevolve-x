@@ -1,4 +1,11 @@
+fastapi
+joblib
 numpy
 pandas
 pyarrow
+pydantic
 pyyaml
+requests
+scikit-learn
+uvicorn[standard]
+prometheus-client

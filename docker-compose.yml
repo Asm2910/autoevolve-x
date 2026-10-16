@@ -1,0 +1,10 @@
+services:
+  autoevolve-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: autoevolve-x:1.0.0
+    container_name: autoevolve-x-api
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
