@@ -1,0 +1,9 @@
+apiVersion: 1
+providers:
+  - name: AutoEvolve-X
+    folder: AutoEvolve-X
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    options:
+      path: /etc/grafana/dashboards
