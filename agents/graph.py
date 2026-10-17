@@ -81,9 +81,19 @@ def build_agent(
                 keys.append(spec_from_identity(entry["config"]).key())
         return keys
 
+    def tried_summaries() -> list[dict]:
+        rows = []
+        for entry in store.recent(KIND, limit=40):
+            if entry["dataset_sha256"] == dataset_sha256:
+                rows.append({"hypothesis": entry["hypothesis"], "verdict": entry["verdict"],
+                             "result": entry["conclusion"]})
+        return rows
+
     def recall(state: AgentState) -> dict:
         context = {
             "tried_keys": tried_keys(),
+            "tried": tried_summaries(),
+            "rejections": [],
             "lessons": [lesson["text"] for lesson in store.lessons(limit=8)],
             "recent": [
                 {"hypothesis": e["hypothesis"], "verdict": e["verdict"], "conclusion": e["conclusion"]}
@@ -93,18 +103,30 @@ def build_agent(
         }
         return {"context": context}
 
+    def with_rejection(state: AgentState, message: str) -> dict:
+        """Tell the proposer why its last suggestion was refused, so it can correct itself."""
+        context = state["context"]
+        return {**context, "rejections": [*context.get("rejections", []), message]}
+
     def propose(state: AgentState) -> dict:
         champion = spec_from_identity(state["champion"], state["champion"].get("hypothesis", ""))
+        retries = state.get("retries", 0) + 1
         try:
             spec = proposer.propose(champion, state["context"])
         except Exception as exc:  # noqa: BLE001 - a bad proposal must not crash the loop
-            return {"spec": None, "spec_error": f"proposer failed: {exc}", "retries": state.get("retries", 0) + 1}
+            message = f"proposer failed: {exc}"
+            log(f"  {message}")
+            return {"spec": None, "spec_error": message, "retries": retries,
+                    "context": with_rejection(state, message)}
         if spec is None:
-            return {"spec": None, "spec_error": "", "stop_reason": "the proposer has nothing left to suggest"}
+            reason = getattr(proposer, "stop_reason", "") or "the proposer has nothing left to suggest"
+            return {"spec": None, "spec_error": "", "stop_reason": reason}
         errors = spec.problems(allowed_groups, allowed_windows)
         if errors:
+            message = f"{spec.key()} refused: {'; '.join(errors)}"
             log(f"  rejected proposal before running: {'; '.join(errors)}")
-            return {"spec": None, "spec_error": "; ".join(errors), "retries": state.get("retries", 0) + 1}
+            return {"spec": None, "spec_error": message, "retries": retries,
+                    "context": with_rejection(state, message)}
         return {"spec": {**spec.identity(), "hypothesis": spec.hypothesis}, "spec_error": ""}
 
     def route_after_propose(state: AgentState) -> str:
@@ -120,7 +142,8 @@ def build_agent(
         champion_key = spec_from_identity(state["champion"]).key()
         if known or spec.key() == champion_key:
             log(f"  already tried, skipping: {spec.hypothesis}")
-            context = {**state["context"], "tried_keys": [*state["context"]["tried_keys"], spec.key()]}
+            context = with_rejection(state, f"{spec.key()} was already tried; propose something different")
+            context["tried_keys"] = [*context["tried_keys"], spec.key()]
             return {"spec": None, "context": context, "retries": state.get("retries", 0) + 1}
         return {}
 
