@@ -8,6 +8,7 @@ import pandas as pd
 from fastapi import FastAPI, HTTPException, Request, Response
 
 from api.schemas import PredictionRequest, PredictionResponse
+from models.explain import supports_explanations, top_reasons
 from observability.logging import get_logger
 from observability.metrics import (
     API_REQUEST_COUNT,
@@ -29,6 +30,8 @@ MODEL_VERSION = str(metadata["model_version"])
 THRESHOLD = float(metadata["threshold"])
 REQUIRED_FEATURES = list(metadata["features"])
 NUMERIC_FEATURES = list(metadata["numeric_features"])
+EXPLAINABLE = supports_explanations(model)
+TOP_K_REASONS = 5
 
 app = FastAPI(title="AutoEvolve-X Risk API", version=MODEL_VERSION)
 
@@ -109,6 +112,16 @@ def predict(payload: PredictionRequest, request: Request) -> PredictionResponse:
         )
         raise HTTPException(status_code=422, detail=f"Invalid features: {exc}") from exc
 
+    reasons: list[dict] = []
+    if EXPLAINABLE:
+        try:
+            reasons = top_reasons(model, frame, TOP_K_REASONS)[0]
+        except Exception as exc:  # noqa: BLE001 - an explanation failure must never break scoring
+            logger.warning(
+                "explanation_failed",
+                extra={"request_id": request.state.request_id, "error": str(exc)},
+            )
+
     prediction = int(probability >= THRESHOLD)
     PREDICTION_COUNT.labels(MODEL_NAME, str(prediction)).inc()
     logger.info(
@@ -128,4 +141,5 @@ def predict(payload: PredictionRequest, request: Request) -> PredictionResponse:
         model_name=MODEL_NAME,
         model_version=MODEL_VERSION,
         request_id=request.state.request_id,
+        top_reasons=reasons,
     )

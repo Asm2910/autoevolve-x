@@ -46,6 +46,9 @@ def test_predict_returns_valid_probability(payload):
     assert body["risk_prediction"] == int(body["risk_probability"] >= THRESHOLD)
     assert body["subscriber_id"] == payload["subscriber_id"]
     assert body["request_id"]
+    assert isinstance(body["top_reasons"], list)
+    assert len(body["top_reasons"]) <= 5
+    assert all(r["contribution"] > 0 for r in body["top_reasons"])
 
 
 def test_predict_rejects_missing_features():
