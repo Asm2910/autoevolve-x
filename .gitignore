@@ -61,3 +61,6 @@ data/hidden/
 mlflow.db
 mlartifacts/
 mlruns/
+
+memory/*.db
+memory/chroma/
