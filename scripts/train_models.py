@@ -15,13 +15,13 @@ from __future__ import annotations
 
 import hashlib
 import json
-import subprocess
 from datetime import UTC, datetime
 
 import joblib
 import numpy as np
 import pandas as pd
 
+from models.tracking import code_version, log_training
 from models.training import (
     ARTIFACT_DIR,
     LABEL,
@@ -43,16 +43,6 @@ def file_sha256(path) -> str:
         for block in iter(lambda: file.read(1 << 20), b""):
             digest.update(block)
     return digest.hexdigest()
-
-
-def git_commit() -> str:
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, check=True
-        )
-        return result.stdout.strip()
-    except (OSError, subprocess.CalledProcessError):
-        return "unknown"
 
 
 def main() -> None:
@@ -134,7 +124,7 @@ def main() -> None:
         "test_ci95": results[served]["test_ci95"],
         "training": {
             "trained_at": datetime.now(UTC).isoformat(timespec="seconds"),
-            "git_commit": git_commit(),
+            **code_version(),
             "dataset_sha256": file_sha256(PROCESSED_DIR / "features.parquet"),
             "train_rows": len(train),
             "train_positives": int(train[LABEL].sum()),
@@ -164,6 +154,22 @@ def main() -> None:
             f"{t['precision_at_review']:.3f} | {t['recall_at_review']:.3f} |"
         )
     (PROCESSED_DIR / "model_report.md").write_text("\n".join(lines) + "\n")
+
+    if config.get("tracking", {}).get("enabled", True):
+        run_id = log_training(
+            config,
+            results,
+            served,
+            {
+                "dataset_sha256": metadata["training"]["dataset_sha256"],
+                "n_features": len(features),
+                "train_rows": len(train),
+                "train_positives": int(train[LABEL].sum()),
+            },
+            ARTIFACT_DIR,
+            PROCESSED_DIR,
+        )
+        print(f"\nLogged to MLflow (run {run_id}). Browse: mlflow ui --backend-store-uri sqlite:///mlflow.db")
 
     print("\n" + "\n".join(lines[4:]))
     for name in results:

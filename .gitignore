@@ -56,3 +56,8 @@ experiments/outputs/
 tmp/
 temp/
 data/hidden/
+
+# MLflow
+mlflow.db
+mlartifacts/
+mlruns/

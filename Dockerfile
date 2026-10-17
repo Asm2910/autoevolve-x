@@ -7,8 +7,7 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /app
 
 # XGBoost needs the OpenMP runtime, which the slim image does not include.
-RUN sed -i 's|http://deb.debian.org|https://deb.debian.org|g' /etc/apt/sources.list.d/debian.sources \
-    && apt-get update \
+RUN apt-get update \
     && apt-get install -y --no-install-recommends libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
@@ -23,6 +22,7 @@ RUN sed 's/^xgboost==/xgboost-cpu==/' requirements.txt > requirements.docker.txt
 # run `python -m scripts.train_models` before building.
 COPY api ./api
 COPY observability ./observability
+COPY models/__init__.py models/explain.py ./models/
 COPY models/artifacts ./models/artifacts
 
 RUN useradd --create-home --uid 1000 appuser
