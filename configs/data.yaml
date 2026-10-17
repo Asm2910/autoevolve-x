@@ -1,37 +1,36 @@
+# Data generation config (v2: hidden fraud ground truth, 12-month window, snapshots)
 data:
   seed: 42
+  time_range:
+    start: "2025-07-01"
+    end: "2026-06-30 23:59:59"
 
   customers:
-    n_rows: 20000
+    n_rows: 25000
+    activation_start: "2023-01-01"
+    activation_end: "2026-03-31"
 
   usage_events:
-    n_rows: 500000
-
+    n_rows: 1200000
   recharges:
-    n_rows: 100000
-
+    n_rows: 300000
   network_events:
-    n_rows: 250000
-
+    n_rows: 600000
   risk_events:
-    n_rows: 15000
+    n_rows: 30000
 
-  labels:
-    positive_rate: 0.05
+  fraud:
+    rate: 0.10                     # share of subscribers who commit fraud in the window
+    confirm_probability: 0.85      # share of fraud that is ever confirmed (rest is missed)
+    confirm_lag_median_days: 14    # days from fraud start to confirmation
+    false_confirm_rate: 0.004      # innocent subscribers wrongly confirmed (label noise)
+    duration_median_days: 60       # how long a fraud campaign lasts if never blocked
+    drift_strength: 1.0            # 0 = static fraud, 1 = full evasion drift over time
+    # order: sim_box, subscription_fraud, account_takeover, wangiri
+    type_mix_start: [0.45, 0.30, 0.15, 0.10]
+    type_mix_end: [0.20, 0.25, 0.25, 0.30]
 
-  time_range:
-    start: "2026-01-01"
-    end: "2026-06-30"
-
-  splits:
-    train:
-      start: "2026-01-01"
-      end: "2026-04-30"
-
-    validation:
-      start: "2026-05-01"
-      end: "2026-05-31"
-
-    test:
-      start: "2026-06-01"
-      end: "2026-06-30"
+  snapshots:
+    first: "2025-09-30"            # needs 90 days of history before the first snapshot
+    last: "2026-05-31"             # needs 30 days of label horizon after the last one
+    horizon_days: 30

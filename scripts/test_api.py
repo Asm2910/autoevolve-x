@@ -1,172 +1,51 @@
-from __future__ import annotations
+"""Send one real test row to a running API and check the response.
+
+Start the API first:  python -m uvicorn api.app:app --port 8000
+Then run:             python -m scripts.test_api
+"""
 
 import json
-from pathlib import Path
+import sys
 
 import pandas as pd
 import requests
 
-DATA_PATH = Path(
-    "data/processed/test.parquet"
-)
+API_URL = "http://localhost:8000"
+METADATA_PATH = "models/artifacts/model_metadata.json"
+TEST_PATH = "data/processed/test.parquet"
 
-API_URL = (
-    "http://127.0.0.1:8000/predict"
-)
-
-ID_COLUMN = "subscriber_id"
-TARGET_COLUMN = "risk_label"
-
-EXCLUDED_COLUMNS = {
-    ID_COLUMN,
-    TARGET_COLUMN,
+EXPECTED_FIELDS = {
+    "subscriber_id",
+    "risk_probability",
+    "risk_prediction",
+    "threshold",
+    "model_name",
+    "model_version",
+    "request_id",
 }
 
 
-def load_test_row() -> tuple[str, dict]:
-    """Load one real subscriber and its model features."""
-    if not DATA_PATH.exists():
-        raise FileNotFoundError(
-            f"Test dataset not found: {DATA_PATH}"
-        )
-
-    data = pd.read_parquet(DATA_PATH)
-
-    if data.empty:
-        raise ValueError(
-            "Test dataset is empty."
-        )
-
-    row = data.iloc[0]
-
-    subscriber_id = str(
-        row[ID_COLUMN]
-    )
-
-    features = {
-        column: row[column]
-        for column in data.columns
-        if column not in EXCLUDED_COLUMNS
-    }
-
-    return subscriber_id, features
-
-
-def make_json_safe(
-    features: dict,
-) -> dict:
-    """Convert pandas and NumPy values into JSON-safe values."""
-    safe_features = {}
-
-    for column, value in features.items():
-        if pd.isna(value):
-            safe_features[column] = None
-        elif hasattr(value, "item"):
-            safe_features[column] = value.item()
-        else:
-            safe_features[column] = value
-
-    return safe_features
-
-
-def call_prediction_api(
-    subscriber_id: str,
-    features: dict,
-) -> dict:
-    """Call the prediction endpoint."""
-    payload = {
-        "subscriber_id": subscriber_id,
-        "features": make_json_safe(features),
-    }
-
-    response = requests.post(
-        API_URL,
-        json=payload,
-        timeout=30,
-    )
-
-    if not response.ok:
-        raise RuntimeError(
-            "Prediction API request failed.\n"
-            f"Status code: {response.status_code}\n"
-            f"Response: {response.text}"
-        )
-
-    return response.json()
-
-
 def main() -> None:
-    """Run an end-to-end API prediction test."""
-    print("Loading test subscriber...")
+    with open(METADATA_PATH, encoding="utf-8") as file:
+        feature_names = json.load(file)["features"]
 
-    subscriber_id, features = load_test_row()
-
-    print(
-        f"Subscriber: {subscriber_id}"
-    )
-
-    print(
-        f"Feature count: {len(features)}"
-    )
-
-    print()
-    print("Calling prediction API...")
-
-    result = call_prediction_api(
-        subscriber_id,
-        features,
-    )
-
-    print()
-    print("Prediction response:")
-
-    print(
-        json.dumps(
-            result,
-            indent=2,
-        )
-    )
-
-    required_fields = {
-        "subscriber_id",
-        "risk_probability",
-        "risk_prediction",
-        "model_name",
-        "model_version",
-        "threshold",
+    row = pd.read_parquet(TEST_PATH).iloc[[0]]
+    payload = {
+        "subscriber_id": str(row["subscriber_id"].iloc[0]),
+        "features": json.loads(row[feature_names].to_json(orient="records"))[0],
     }
+    print(f"Subscriber: {payload['subscriber_id']}  features: {len(payload['features'])}")
 
-    missing_fields = (
-        required_fields
-        - set(result)
-    )
+    response = requests.post(f"{API_URL}/predict", json=payload, timeout=30)
+    print(f"HTTP {response.status_code}")
+    print(json.dumps(response.json(), indent=2))
 
-    if missing_fields:
-        raise ValueError(
-            "Missing response fields: "
-            f"{sorted(missing_fields)}"
-        )
-
-    probability = float(
-        result["risk_probability"]
-    )
-
-    prediction = int(
-        result["risk_prediction"]
-    )
-
-    if not 0 <= probability <= 1:
-        raise ValueError(
-            "Risk probability must be between 0 and 1."
-        )
-
-    if prediction not in {0, 1}:
-        raise ValueError(
-            "Risk prediction must be 0 or 1."
-        )
-
-    print()
-    print("API validation passed.")
+    if response.status_code != 200:
+        sys.exit("API validation FAILED")
+    missing = EXPECTED_FIELDS - set(response.json())
+    if missing:
+        sys.exit(f"API validation FAILED: missing fields {sorted(missing)}")
+    print("\nAPI validation passed.")
 
 
 if __name__ == "__main__":

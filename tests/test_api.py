@@ -5,10 +5,9 @@ import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
-from api.app import THRESHOLD, app
+from api.app import THRESHOLD, app, model
 
 TEST_DATA = Path("data/processed/test.parquet")
-DROP_COLS = ["subscriber_id", "risk_label"]
 
 client = TestClient(app)
 
@@ -17,8 +16,13 @@ client = TestClient(app)
 def payload():
     if not TEST_DATA.exists():
         pytest.skip("test split not found")
+
+    required = list(getattr(model, "feature_names_in_", []))
     row = pd.read_parquet(TEST_DATA).iloc[[0]]
-    features = json.loads(row.drop(columns=DROP_COLS).to_json(orient="records"))[0]
+    if not required or not set(required) <= set(row.columns):
+        pytest.skip("model artifact was trained on a different feature set - retrain it")
+
+    features = json.loads(row[required].to_json(orient="records"))[0]
     return {"subscriber_id": str(row["subscriber_id"].iloc[0]), "features": features}
 
 

@@ -55,3 +55,4 @@ experiments/outputs/
 # Temporary files
 tmp/
 temp/
+data/hidden/
