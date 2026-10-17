@@ -104,7 +104,7 @@ docs/                  overview, design, technical, data dictionary, end-to-end 
 .github/workflows/     CI
 ```
 
-Generated data (`data/`) is not committed and is recreated by the pipeline. The trained model in `models/artifacts/` is committed so the Docker build and CI can run without training. Each training run writes `model_metadata.json` (dataset hash, git commit, metrics, thresholds) and `model_report.md`.
+Generated data (`data/`) and the trained model (`models/artifacts/`) are git-ignored and recreated by `python -m scripts.run_pipeline`. CI runs the pipeline itself and hands the trained model to the Docker job. Each training run writes `model_metadata.json` (dataset hash, git commit, metrics, thresholds) and `model_report.md`.
 
 ## Documentation
 

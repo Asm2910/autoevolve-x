@@ -22,7 +22,18 @@ jobs:
           cache-dependency-path: requirements-dev.txt
       - run: pip install -r requirements-dev.txt
       - run: python -m ruff check .
+      # Data and models are git-ignored, so build them here. This takes about two minutes and
+      # also proves that the whole pipeline still runs from a clean checkout.
+      - name: Build the data and train the model
+        run: python -m scripts.run_pipeline
       - run: python -m pytest -q
+      - name: Keep the trained model for the Docker job
+        uses: actions/upload-artifact@v4
+        with:
+          name: model-artifacts
+          path: models/artifacts
+          if-no-files-found: error
+          retention-days: 3
 
   docker:
     name: Build the API image
@@ -30,6 +41,11 @@ jobs:
     needs: test
     steps:
       - uses: actions/checkout@v4
+      - name: Fetch the trained model
+        uses: actions/download-artifact@v4
+        with:
+          name: model-artifacts
+          path: models/artifacts
       - name: Check the compose file
         run: docker compose config -q
       - name: Build the image

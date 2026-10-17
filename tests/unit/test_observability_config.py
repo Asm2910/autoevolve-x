@@ -20,7 +20,20 @@ def load_yaml(path: Path):
 
 
 def registered_names() -> set[str]:
-    return {sample.name for family in REGISTRY.collect() for sample in family.samples}
+    """Every sample name the API can export, from the metric definitions alone.
+
+    A labelled metric has no samples until something is recorded, so reading samples would make
+    this test depend on which other tests ran first. The metric type gives the names instead.
+    """
+    names: set[str] = set()
+    for family in REGISTRY.collect():
+        if family.type == "counter":
+            names |= {family.name, f"{family.name}_total"}
+        elif family.type == "histogram":
+            names |= {f"{family.name}{suffix}" for suffix in ("_bucket", "_count", "_sum")}
+        else:
+            names.add(family.name)
+    return names
 
 
 def dashboard() -> dict:
