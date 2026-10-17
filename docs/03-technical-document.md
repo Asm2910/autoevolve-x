@@ -196,8 +196,8 @@ The last full run passed 101 tests, and `ruff check .` is clean. Tests cover eac
 
 **GitHub Actions** runs on pushes to `main` and on pull requests:
 
-1. **Lint and test:** install dev requirements, `ruff check .`, `pytest -q`.
-2. **Build the API image:** validate the compose file, build the image, start it and wait for `/health`.
+1. **Lint and test:** install dev requirements, `ruff check .`, build the data and train the model with `scripts.run_pipeline` (data and models are git-ignored, about two minutes), `pytest -q`, then keep the trained model as a build artifact.
+2. **Build the API image:** fetch that model, validate the compose file, build the image, start it and wait for `/health`.
 
 The second job starts only if the first passes, and a newer run cancels an older one on the same branch.
 
@@ -260,7 +260,7 @@ The language-model proposer reads its API key from the environment. Never put a 
 | RejectedPredictions | Grafana rejected-requests line; log entries named `prediction_failed` | A client changed its features. Compare with the feature count from `/model/info` |
 | Grafana panels empty | `http://localhost:9090/targets` shows the API as UP? | If DOWN, check the compose service name and port. If UP, send traffic with `generate_traffic` |
 | `confirm_champion` refuses to run | Expected: the sealed test runs once per dataset | A new evaluation needs a new dataset, never a rerun on the same one |
-| CI docker job fails | Container logs printed by the job | Confirm model artifacts are committed and the image starts locally |
+| CI docker job fails | Container logs printed by the job | Model artifacts are not in git. Confirm the test job uploaded `model-artifacts`, and that the image starts locally after `python -m scripts.run_pipeline` |
 
 No notifications are wired up yet, so alerts are visible only in Prometheus and Grafana.
 
