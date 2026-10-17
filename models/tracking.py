@@ -120,3 +120,35 @@ def log_training(
                 if sweep.exists():
                     mlflow.log_artifact(str(sweep))
         return parent.info.run_id
+
+
+
+def log_agent_candidate(
+    config: dict, identity: dict, hypothesis: str, result: dict, verdict: str, reason: str
+) -> str:
+    """One MLflow run per experiment the agent tried (experiment '<name>-agent')."""
+    agent_config = {
+        **config,
+        "tracking": {
+            **config.get("tracking", {}),
+            "experiment_name": f"{config.get('tracking', {}).get('experiment_name', 'autoevolve-x')}-agent",
+        },
+    }
+    setup(agent_config)
+    version = code_version()
+    tags = {k: str(v) for k, v in version.items()} | {
+        "stage": "agent",
+        "verdict": verdict,
+        "reason": reason[:500],
+        "hypothesis": hypothesis[:500],
+    }
+    with mlflow.start_run(run_name=f"{identity['model']}-{verdict}") as run:
+        mlflow.set_tags(tags)
+        params: dict = {}
+        _flatten("spec", identity, params)
+        mlflow.log_params(params)
+        mlflow.log_metrics(
+            _numeric(result)
+            | {"diff_ci_low": float(result["diff_ci"][0]), "diff_ci_high": float(result["diff_ci"][1])}
+        )
+        return run.info.run_id
