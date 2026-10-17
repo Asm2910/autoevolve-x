@@ -5,3 +5,4 @@ httpx==0.28.1
 requests==2.34.2
 mlflow==3.17.1
 chromadb==1.5.9
+langgraph==1.2.16
