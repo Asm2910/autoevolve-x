@@ -27,3 +27,13 @@ models:
     subsample: 0.8
     colsample_bytree: 0.5
     min_child_weight: 5
+
+tracking:
+  enabled: true
+  experiment_name: autoevolve-x
+  # tracking_uri: sqlite:///mlflow.db   # default; override with MLFLOW_TRACKING_URI
+
+ablation:
+  model: xgboost
+  bootstrap_samples: 500
+
