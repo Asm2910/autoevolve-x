@@ -1,16 +1,14 @@
+"""Build, validate, audit and persist the snapshot feature dataset.
+
+Run with:  python -m scripts.build_features
+"""
+
+import json
 from pathlib import Path
 
 import pandas as pd
 
-from feature_engineering.audit import (
-    audit_features,
-    find_constant_features,
-    find_high_missing_features,
-)
-from feature_engineering.builder import (
-    build_feature_dataset,
-    fill_missing_features,
-)
+from feature_engineering.builder import build_feature_dataset, feature_manifest
 from feature_engineering.validation import validate_feature_dataset
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -21,116 +19,49 @@ PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
 def load_raw_datasets() -> dict[str, pd.DataFrame]:
     """Load all raw datasets required for feature engineering."""
     return {
-        "customers": pd.read_parquet(
-            RAW_DIR / "customers.parquet"
-        ),
-        "usage": pd.read_parquet(
-            RAW_DIR / "usage_events.parquet"
-        ),
-        "recharges": pd.read_parquet(
-            RAW_DIR / "recharges.parquet"
-        ),
-        "network": pd.read_parquet(
-            RAW_DIR / "network_events.parquet"
-        ),
-        "risk": pd.read_parquet(
-            RAW_DIR / "risk_events.parquet"
-        ),
-        "labels": pd.read_parquet(
-            RAW_DIR / "labels.parquet"
-        ),
+        "customers": pd.read_parquet(RAW_DIR / "customers.parquet"),
+        "usage": pd.read_parquet(RAW_DIR / "usage_events.parquet"),
+        "recharges": pd.read_parquet(RAW_DIR / "recharges.parquet"),
+        "network": pd.read_parquet(RAW_DIR / "network_events.parquet"),
+        "risk": pd.read_parquet(RAW_DIR / "risk_events.parquet"),
+        "snapshot_labels": pd.read_parquet(RAW_DIR / "snapshot_labels.parquet"),
     }
 
 
 def main() -> None:
-    """Build, validate, audit, and persist the feature dataset."""
     datasets = load_raw_datasets()
 
-    print("Building feature dataset...")
-
+    print("Building snapshot feature dataset...")
     features = build_feature_dataset(
-    customers=datasets["customers"],
-    usage_events=datasets["usage"],
-    recharges=datasets["recharges"],
-    network_events=datasets["network"],
-    risk_events=datasets["risk"],
-    labels=datasets["labels"],
-)
-
-    features = fill_missing_features(features)
+        customers=datasets["customers"],
+        usage_events=datasets["usage"],
+        recharges=datasets["recharges"],
+        network_events=datasets["network"],
+        risk_events=datasets["risk"],
+        snapshot_labels=datasets["snapshot_labels"],
+    )
 
     print(f"Feature dataset shape: {features.shape}")
 
     print("\nValidating feature dataset...")
-    validate_feature_dataset(features)
-
-    print("\nRunning feature audit...")
-    audit = audit_features(features)
-
-    constant_features = find_constant_features(audit)
-    high_missing_features = find_high_missing_features(audit)
-
-    print(f"Total features: {len(audit)}")
-    print(
-        f"Constant features: "
-        f"{len(constant_features)}"
-    )
-    print(
-        f"High-missing features: "
-        f"{len(high_missing_features)}"
+    validate_feature_dataset(
+        features,
+        expected_snapshots=datasets["snapshot_labels"]["snapshot_date"].nunique(),
     )
 
-    if not constant_features.empty:
-        print("\nConstant features:")
-        print(
-            constant_features[
-                ["feature", "n_unique"]
-            ].to_string(index=False)
-        )
+    manifest = feature_manifest(features)
+    PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+    features.to_parquet(PROCESSED_DIR / "features.parquet", index=False)
+    (PROCESSED_DIR / "feature_manifest.json").write_text(json.dumps(manifest, indent=2))
 
-    if not high_missing_features.empty:
-        print("\nHigh-missing features:")
-        print(
-            high_missing_features[
-                ["feature", "missing_rate"]
-            ].to_string(index=False)
-        )
+    print("\nFeature groups:")
+    for group, columns in manifest["groups"].items():
+        print(f"  {group:<10} {len(columns):>4} features")
 
-    PROCESSED_DIR.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
-
-    output_path = (
-        PROCESSED_DIR / "features.parquet"
-    )
-
-    features.to_parquet(
-        output_path,
-        index=False,
-    )
-
-    print(
-        f"\nSaved feature dataset to: {output_path}"
-    )
-
-    print("\nFeature dataset summary:")
-    print(f"  Rows: {len(features):,}")
-    print(
-        f"  Columns: {len(features.columns):,}"
-    )
-    print(
-        "  Unique subscribers: "
-        f"{features['subscriber_id'].nunique():,}"
-    )
-    print(
-        "  Missing values: "
-        f"{features.isna().sum().sum():,}"
-    )
-    print(
-        "  Positive rate: "
-        f"{features['risk_label'].mean():.4f}"
-    )
+    missing = features.isna().mean()
+    print(f"\nColumns with >50% missing: {int((missing > 0.5).sum())}")
+    print(f"Rows: {len(features):,}   positive rate: {features['risk_label'].mean():.4f}")
+    print(f"Saved to: {PROCESSED_DIR / 'features.parquet'}")
 
 
 if __name__ == "__main__":
