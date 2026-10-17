@@ -17,19 +17,31 @@ from observability.metrics import (
 )
 
 ARTIFACT_DIR = Path("models/artifacts")
-MODEL_PATH = ARTIFACT_DIR / "baseline_logistic_regression.joblib"
 METADATA_PATH = ARTIFACT_DIR / "model_metadata.json"
 
 logger = get_logger()
 
-model = joblib.load(MODEL_PATH)
 metadata = json.loads(METADATA_PATH.read_text())
+model = joblib.load(ARTIFACT_DIR / metadata["artifact"])
 
-MODEL_NAME = metadata.get("model_name", "baseline_logistic_regression")
-MODEL_VERSION = str(metadata.get("model_version", "v1"))
-THRESHOLD = float(metadata.get("threshold", 0.90))
+MODEL_NAME = metadata["model_name"]
+MODEL_VERSION = str(metadata["model_version"])
+THRESHOLD = float(metadata["threshold"])
+REQUIRED_FEATURES = list(metadata["features"])
+NUMERIC_FEATURES = list(metadata["numeric_features"])
 
 app = FastAPI(title="AutoEvolve-X Risk API", version=MODEL_VERSION)
+
+
+def build_frame(features: dict) -> pd.DataFrame:
+    """One-row frame with exactly the columns the model was trained on."""
+    missing = [name for name in REQUIRED_FEATURES if name not in features]
+    if missing:
+        raise ValueError(f"missing {len(missing)} features, e.g. {missing[:5]}")
+
+    frame = pd.DataFrame([{name: features[name] for name in REQUIRED_FEATURES}])
+    frame[NUMERIC_FEATURES] = frame[NUMERIC_FEATURES].apply(pd.to_numeric, errors="raise")
+    return frame.astype({name: "float64" for name in NUMERIC_FEATURES})
 
 
 @app.middleware("http")
@@ -71,7 +83,11 @@ def model_info() -> dict:
         "model_name": MODEL_NAME,
         "model_version": MODEL_VERSION,
         "threshold": THRESHOLD,
+        "n_features": len(REQUIRED_FEATURES),
+        "probability_calibrated": metadata.get("probability_calibrated", False),
         "metrics": metadata.get("metrics", {}),
+        "test_ci95": metadata.get("test_ci95", {}),
+        "training": metadata.get("training", {}),
     }
 
 
@@ -83,10 +99,10 @@ def metrics() -> Response:
 
 @app.post("/predict", response_model=PredictionResponse)
 def predict(payload: PredictionRequest, request: Request) -> PredictionResponse:
-    frame = pd.DataFrame([payload.features])
     try:
+        frame = build_frame(payload.features)
         probability = float(model.predict_proba(frame)[0, 1])
-    except Exception as exc:  # missing/invalid features
+    except Exception as exc:  # missing or invalid features
         logger.warning(
             "prediction_failed",
             extra={"request_id": request.state.request_id, "error": str(exc)},
