@@ -2,6 +2,7 @@ import pytest
 
 from agents.decision import decide
 from agents.graph import build_agent, load_champion
+from agents.llm_proposer import FallbackProposer, LLMProposal, LLMProposer
 from agents.proposers import RuleProposer
 from agents.spec import ExperimentSpec
 from memory.store import MemoryStore
@@ -188,3 +189,110 @@ def test_duplicate_proposals_are_skipped_by_memory(store):
     agent = build_agent(runner, store, Stubborn(), CONFIG, "d", log=lambda _m: None)
     invoke(agent, spec(), 5)
     assert runner.ran == [candidate.key()]  # proposed three times, run once
+
+
+# ---- LLM proposer (scripted fake model, no network) -----------------------------
+class ScriptedLLM:
+    """Stands in for a chat model: returns queued LLMProposal objects and records prompts."""
+
+    def __init__(self, *replies):
+        self.replies = list(replies)
+        self.prompts: list = []
+
+    def with_structured_output(self, schema, method=None):
+        assert schema is LLMProposal
+        # forced tool calling is rejected by current Claude models; the proposer must ask for json_schema
+        assert method == "json_schema"
+        return self
+
+    def invoke(self, messages):
+        self.prompts.append(messages)
+        reply = self.replies.pop(0)
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
+
+
+def make_llm_proposer(llm):
+    return LLMProposer(llm, BASE_XGB, GROUPS, WINDOWS, min_gain=0.01)
+
+
+def test_llm_proposal_becomes_a_spec():
+    llm = ScriptedLLM(LLMProposal(groups=["usage", "network"], windows=[30], max_depth=4,
+                                  hypothesis="usage carries the signal; network was borderline"))
+    candidate = make_llm_proposer(llm).propose(spec(), {"lessons": ["usage matters"], "tried": []})
+    assert candidate.groups == ["usage", "network"]
+    assert candidate.params == {"max_depth": 4}  # unset fields are not overrides
+    assert candidate.problems(GROUPS, WINDOWS) == []
+
+
+def test_prompt_contains_rules_evidence_and_refusals():
+    llm = ScriptedLLM(LLMProposal(groups=["usage"], windows=[7]))
+    context = {
+        "lessons": ["Removing usage hurts"],
+        "tried": [{"hypothesis": "Deeper trees", "verdict": "reject", "result": "no clear difference"}],
+        "rejections": ["bad spec refused: unknown windows"],
+    }
+    make_llm_proposer(llm).propose(spec(), context)
+    system, human = llm.prompts[0][0][1], llm.prompts[0][1][1]
+    assert "max_depth" in system and "usage" in system and "exactly ONE" in system
+    assert "Removing usage hurts" in human
+    assert "Deeper trees" in human
+    assert "unknown windows" in human
+
+
+def test_llm_can_choose_to_stop():
+    proposer = make_llm_proposer(ScriptedLLM(LLMProposal(stop=True, stop_reason="all variants within noise")))
+    assert proposer.propose(spec(), {}) is None
+    assert "all variants within noise" in proposer.stop_reason
+
+
+def test_agent_refuses_unsafe_llm_proposals_then_accepts_a_safe_one(store):
+    llm = ScriptedLLM(
+        LLMProposal(groups=["usage", "secrets"], windows=[7], hypothesis="invented group"),
+        LLMProposal(groups=["usage"], windows=[7], max_depth=99, hypothesis="absurd depth"),
+        LLMProposal(groups=["usage", "risk"], windows=[7, 30], max_depth=4, hypothesis="safe"),
+    )
+    runner = FakeRunner()
+    agent = build_agent(runner, store, make_llm_proposer(llm), CONFIG, "d", log=lambda _m: None)
+    state = invoke(agent, spec(), 1)
+
+    assert len(runner.ran) == 1
+    assert state["history"][0]["hypothesis"] == "safe"
+    # the model was told why its first two proposals were refused
+    third_prompt = llm.prompts[2][1][1]
+    assert "unknown feature groups" in third_prompt
+    assert "outside" in third_prompt
+
+
+def test_malformed_model_output_is_a_refusal_not_a_crash(store):
+    llm = ScriptedLLM(
+        LLMProposal(model="random_forest", groups=["usage"], windows=[7]),
+        LLMProposal(groups=[], windows=[7]),
+        LLMProposal(groups=["usage"], windows=[7], hypothesis="fine"),
+    )
+    runner = FakeRunner()
+    agent = build_agent(runner, store, make_llm_proposer(llm), CONFIG, "d", log=lambda _m: None)
+    state = invoke(agent, spec(), 1)
+    assert state["history"][0]["hypothesis"] == "fine"
+
+
+def test_agent_stops_with_the_models_reason(store):
+    llm = ScriptedLLM(LLMProposal(stop=True, stop_reason="nothing promising left"))
+    agent = build_agent(FakeRunner(), store, make_llm_proposer(llm), CONFIG, "d", log=lambda _m: None)
+    state = invoke(agent, spec(), 3)
+    assert "nothing promising left" in state["stop_reason"]
+
+
+def test_fallback_uses_rules_when_the_model_fails():
+    llm = ScriptedLLM(RuntimeError("API unavailable"))
+    proposer = FallbackProposer(make_llm_proposer(llm), RuleProposer(BASE_XGB), log=lambda _m: None)
+    candidate = proposer.propose(spec(), {"tried_keys": []})
+    assert candidate is not None and candidate.problems(GROUPS, WINDOWS) == []
+
+
+def test_proposal_schema_has_no_free_form_dictionary():
+    """The API's strict JSON-schema mode cannot express any-key objects; every field must be explicit."""
+    schema = LLMProposal.model_json_schema()
+    for name, field in schema["properties"].items():
+        assert "additionalProperties" not in field, f"{name} is a free-form object"
