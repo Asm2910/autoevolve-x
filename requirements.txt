@@ -1,11 +1,14 @@
-fastapi
-joblib
-numpy
-pandas
-pyarrow
-pydantic
-pyyaml
-requests
-scikit-learn
-uvicorn[standard]
-prometheus-client
+# Runtime dependencies (API + data/feature/training pipeline). Pinned: the model
+# artifact must be loaded with the same scikit-learn / xgboost it was trained with.
+fastapi==0.143.1
+uvicorn[standard]==0.54.0
+pydantic==2.14.1
+joblib==1.6.0
+numpy==2.5.4
+pandas==3.0.6
+pyarrow==26.0.0
+pyyaml==6.0.3
+scipy==1.18.1
+scikit-learn==1.9.1
+xgboost==3.4.1
+prometheus-client==0.26.0
