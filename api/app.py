@@ -13,7 +13,11 @@ from observability.logging import get_logger
 from observability.metrics import (
     API_REQUEST_COUNT,
     API_REQUEST_LATENCY,
+    MODEL_INFO,
+    MODEL_THRESHOLD,
     PREDICTION_COUNT,
+    PREDICTION_FAILURES,
+    PREDICTION_SCORE,
     render_metrics,
 )
 
@@ -34,6 +38,9 @@ EXPLAINABLE = supports_explanations(model)
 TOP_K_REASONS = 5
 
 app = FastAPI(title="AutoEvolve-X Risk API", version=MODEL_VERSION)
+
+MODEL_INFO.labels(MODEL_NAME, MODEL_VERSION).set(1)
+MODEL_THRESHOLD.labels(MODEL_NAME).set(THRESHOLD)
 
 
 def build_frame(features: dict) -> pd.DataFrame:
@@ -60,7 +67,9 @@ async def observe_requests(request: Request, call_next):
         return response
     finally:
         duration = time.perf_counter() - start
-        path = request.url.path
+        # label by the route pattern, so scanners probing random URLs cannot create endless label values
+        route = request.scope.get("route")
+        path = route.path if route else "unmatched"
         API_REQUEST_COUNT.labels(request.method, path, str(status_code)).inc()
         API_REQUEST_LATENCY.labels(request.method, path).observe(duration)
         logger.info(
@@ -68,7 +77,7 @@ async def observe_requests(request: Request, call_next):
             extra={
                 "request_id": request_id,
                 "method": request.method,
-                "path": path,
+                "path": request.url.path,
                 "status_code": status_code,
                 "duration_seconds": round(duration, 4),
             },
@@ -106,6 +115,7 @@ def predict(payload: PredictionRequest, request: Request) -> PredictionResponse:
         frame = build_frame(payload.features)
         probability = float(model.predict_proba(frame)[0, 1])
     except Exception as exc:  # missing or invalid features
+        PREDICTION_FAILURES.labels("invalid_features").inc()
         logger.warning(
             "prediction_failed",
             extra={"request_id": request.state.request_id, "error": str(exc)},
@@ -124,6 +134,7 @@ def predict(payload: PredictionRequest, request: Request) -> PredictionResponse:
 
     prediction = int(probability >= THRESHOLD)
     PREDICTION_COUNT.labels(MODEL_NAME, str(prediction)).inc()
+    PREDICTION_SCORE.labels(MODEL_NAME).observe(probability)
     logger.info(
         "prediction_made",
         extra={

@@ -1,0 +1,53 @@
+groups:
+  - name: autoevolve-api
+    rules:
+      - alert: ApiDown
+        expr: up{job="autoevolve-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: The risk API has not answered Prometheus for a minute.
+
+      - alert: HighErrorRate
+        expr: >
+          sum(rate(api_requests_total{status_code=~"5.."}[5m]))
+          / sum(rate(api_requests_total[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: More than 5% of requests are failing with a server error.
+
+      - alert: SlowPredictions
+        expr: >
+          histogram_quantile(0.95,
+            sum by (le) (rate(api_request_latency_seconds_bucket{path="/predict"}[5m]))) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: The slowest 5% of predictions take longer than half a second.
+
+      - alert: ScoreDistributionShift
+        # Share of scores above 0.1 in the last hour, against twice the share over the last day.
+        # Needs enough traffic to mean something, and a floor so a quiet baseline cannot trigger it.
+        expr: >
+          (1 - sum(increase(prediction_score_bucket{le="0.1"}[1h])) / sum(increase(prediction_score_count[1h])))
+          > 2 * clamp_min(
+              1 - sum(increase(prediction_score_bucket{le="0.1"}[24h])) / sum(increase(prediction_score_count[24h])),
+              0.01)
+          and sum(increase(prediction_score_count[1h])) > 200
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: Risk scores have shifted upward compared with the last day. Check for data drift.
+
+      - alert: RejectedPredictions
+        expr: sum(increase(prediction_failures_total[15m])) > 20
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: Many prediction requests were rejected for missing or invalid features. A client may have changed.

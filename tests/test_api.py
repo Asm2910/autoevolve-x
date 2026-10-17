@@ -68,3 +68,22 @@ def test_metrics_endpoint_exposes_counters(payload):
     text = client.get("/metrics").text
     assert "api_requests_total" in text
     assert "predictions_total" in text
+
+
+def test_unknown_paths_share_one_metric_label():
+    client.get("/scanner-probe-12345")
+    text = client.get("/metrics").text
+    assert 'path="/scanner-probe-12345"' not in text
+    assert 'path="unmatched"' in text
+
+
+def test_score_histogram_and_model_gauges_are_exposed(payload):
+    client.post("/predict", json=payload)
+    text = client.get("/metrics").text
+    assert "prediction_score_bucket" in text
+    assert "model_threshold" in text and "model_info" in text
+
+
+def test_rejected_predictions_are_counted():
+    client.post("/predict", json={"subscriber_id": "X", "features": {"foo": 1}})
+    assert 'prediction_failures_total{reason="invalid_features"}' in client.get("/metrics").text
