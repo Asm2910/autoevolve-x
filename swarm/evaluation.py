@@ -191,7 +191,7 @@ class SegmentAgent(_EvalAgent):
                 rows.append((column, level, mask, positives))
         tests = max(len(rows), 1)
         alpha = req.alpha / tests  # Bonferroni: many groups are tested, so demand stronger evidence
-        table, findings = [], []
+        table, flagged = [], []
         for column, level, mask, positives in rows:
             hits = caught[mask & (c.y == 1)]
             recall = float(hits.mean())
@@ -201,7 +201,7 @@ class SegmentAgent(_EvalAgent):
                           "recall": round(recall, 4), "recall_upper": round(upper, 4)})
             if upper < overall_recall:
                 short = column.split("__")[-1]
-                findings.append(Finding(
+                flagged.append(((overall_recall - recall) * positives, Finding(
                     agent=self.contract.name, severity="warning",
                     title=f"Weaker on {short}={level}",
                     detail=(f"At the review cut-off the model catches {recall:.1%} of fraud in {short}={level} "
@@ -209,7 +209,14 @@ class SegmentAgent(_EvalAgent):
                             f"({upper:.1%}, adjusted for {tests} groups tested) stays below."),
                     evidence=table[-1] | {"overall_recall": round(overall_recall, 4), "groups_tested": tests},
                     hypothesis=f"Fraud in {short}={level} is caught less often; try features or settings that "
-                               f"help that group (for example another feature group or a deeper model)."))
+                               f"help that group (for example another feature group or a deeper model).")))
+        flagged.sort(key=lambda item: item[0], reverse=True)  # biggest shortfall in fraud cases first
+        findings = [finding for _, finding in flagged[: req.top_n]]
+        if len(flagged) > req.top_n:
+            rest = ", ".join(f.title.removeprefix("Weaker on ") for _, f in flagged[req.top_n: req.top_n + 8])
+            findings.append(Finding(agent=self.contract.name, severity="info",
+                                    title=f"{len(flagged) - req.top_n} more groups are also weaker",
+                                    detail=f"Smaller shortfalls: {rest}{'...' if len(flagged) > req.top_n + 8 else ''}."))
         table.sort(key=lambda r: r["recall"])
         if not findings:
             findings.append(Finding(

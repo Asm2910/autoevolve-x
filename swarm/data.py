@@ -105,7 +105,8 @@ class SchemaAgent(_DataAgent):
                 findings.append(self.finding("critical", f"{name}: columns missing",
                                              f"Expected columns not found: {', '.join(missing)}.", {"missing": missing}))
             if extra:
-                findings.append(self.finding("info", f"{name}: extra columns", f"Not in the expected schema: {', '.join(extra)}."))
+                shown = ", ".join(extra[:8]) + (f" and {len(extra) - 8} more" if len(extra) > 8 else "")
+                findings.append(self.finding("info", f"{name}: extra columns", f"{len(extra)} columns beyond the expected ones: {shown}."))
             if spec.time_col and spec.time_col in frame.columns and not pd.api.types.is_datetime64_any_dtype(frame[spec.time_col]):
                 findings.append(self.finding("warning", f"{name}: {spec.time_col} is not a timestamp",
                                              f"Found type {frame[spec.time_col].dtype}; time windows will be wrong."))
@@ -151,10 +152,19 @@ class QualityAgent(_DataAgent):
             missing = sample.isna().mean()
             high = missing[missing >= req.missing_warn].sort_values(ascending=False)
             info["columns_with_missing"] = {k: round(float(v), 4) for k, v in high.head(8).items()}
-            for col, share in high.items():
-                severity = "critical" if share >= req.missing_critical else "warning"
-                findings.append(self.finding(severity, f"{name}.{col}: {share:.0%} missing",
-                                             f"{share:.1%} of values are empty (sampled).", {"share": float(share)}))
+            if len(high) <= 5:
+                for col, share in high.items():
+                    severity = "critical" if share >= req.missing_critical else "warning"
+                    findings.append(self.finding(severity, f"{name}.{col}: {share:.0%} missing",
+                                                 f"{share:.1%} of values are empty (sampled).", {"share": float(share)}))
+            else:  # many sparse columns: one summary instead of a wall of findings
+                heavy = int((high >= req.missing_critical).sum())
+                worst = ", ".join(f"{col} ({share:.0%})" for col, share in high.head(3).items())
+                findings.append(self.finding(
+                    "warning", f"{name}: {len(high)} columns are mostly empty",
+                    f"{len(high)} columns are at least {req.missing_warn:.0%} empty and {heavy} at least {req.missing_critical:.0%}. "
+                    f"Emptiest: {worst}. Tree models handle this; linear models need imputation.",
+                    {"columns": len(high), "heavy": heavy}))
             constant = [col for col in sample.columns if sample[col].nunique(dropna=True) <= 1]
             info["constant_columns"] = constant
             if constant:
@@ -213,7 +223,7 @@ class RelationshipAgent(_DataAgent):
                                              f"{orphan:.2%} of rows point at an entity missing from {c.parent_table}; the join would drop them."))
             if coverage < 0.9:
                 findings.append(self.finding("warning", f"{name}: low coverage",
-                                             f"Only {coverage:.1%} of customers appear in {name}; the rest get empty features.",
+                                             f"Only {coverage:.1%} of {c.parent_table} rows have a match in {name}; the rest get empty features.",
                                              hypothesis=f"Coverage of {name} is low, so its feature group may mostly encode 'has activity'."))
             if median > 0 and top > req.hot_key_ratio * median:
                 findings.append(self.finding("warning", f"{name}: hot key",
@@ -398,3 +408,18 @@ def telecom_specs() -> dict[str, TableSpec]:
             nonnegative=nonneg.get(table, []),
             categories={col: set(allowed) for (t, col), allowed in CATEGORIES.items() if t == table})
     return specs
+
+
+# ---- the IEEE-CIS data set -----------------------------------------------------------------------
+def ieee_specs() -> dict[str, TableSpec]:
+    """Two sources joined on TransactionID. The label lives in the transaction table."""
+    return {
+        "transaction": TableSpec(
+            required=["TransactionID", "isFraud", "TransactionDT", "TransactionAmt", "ProductCD", "card1", "card4",
+                      "addr1", "P_emaildomain", "C1", "D1", "M1", "V1"],
+            id_col="TransactionID", entity_col="TransactionID", time_col=None, nonnegative=["TransactionAmt"],
+            categories={"ProductCD": {"W", "C", "H", "R", "S"}}),
+        "identity": TableSpec(
+            required=["TransactionID", "id_01", "id_30", "id_31", "DeviceType", "DeviceInfo"],
+            id_col="TransactionID", entity_col="TransactionID", time_col=None),
+    }

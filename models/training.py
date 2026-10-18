@@ -24,10 +24,12 @@ from sklearn.pipeline import Pipeline
 
 from arena import registry
 
+import datasets
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-CONFIG_PATH = PROJECT_ROOT / "configs" / "models.yaml"
-PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
-ARTIFACT_DIR = PROJECT_ROOT / "models" / "artifacts"
+CONFIG_PATH = datasets.config_path()  # AUTOEVOLVE_DATASET=ieee switches all of these together
+PROCESSED_DIR = datasets.processed_dir()
+ARTIFACT_DIR = datasets.artifact_dir()
 
 LABEL = "risk_label"
 SEP = "__"

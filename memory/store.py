@@ -16,10 +16,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import datasets
+
 if TYPE_CHECKING:
     from memory.vector import VectorIndex
 
-DEFAULT_PATH = Path(__file__).resolve().parent / "autoevolve.db"
+DEFAULT_PATH = Path(__file__).resolve().parent / f"autoevolve{datasets.memory_suffix()}.db"
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS experiments (

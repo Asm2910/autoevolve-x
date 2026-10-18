@@ -59,6 +59,11 @@ python -m scripts.run_agent --iterations 4 --use-findings   # the proposer also 
 python -m scripts.run_agent --iterations 4 --proposer llm   # Claude proposes, needs ANTHROPIC_API_KEY
 touch memory/STOP                                           # from another terminal: stop a running agent
 
+# 4b. the same system on real fraud data (IEEE-CIS from Kaggle)
+python -m scripts.prepare_ieee --source ~/Downloads/ieee-fraud-detection.zip
+AUTOEVOLVE_DATASET=ieee python -m scripts.run_arena --workers 1
+AUTOEVOLVE_DATASET=ieee python -m scripts.run_evaluation
+
 # 5. the evidence
 python -m scripts.confirm_champion       # sealed test, runs once per dataset
 python -m scripts.monitor_drift

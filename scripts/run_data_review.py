@@ -16,27 +16,34 @@ from datetime import datetime
 import pandas as pd
 import yaml
 
+import datasets
 from agentkit.budget import Budget
 from agentkit.data_access import load_split
 from agentkit.tracing import Observer, TraceLog
 from models.training import LABEL, PROCESSED_DIR, PROJECT_ROOT, load_config
-from swarm.data import DataContext, DataRequest, DataSwarm, telecom_specs
+from swarm.data import DataContext, DataRequest, DataSwarm, ieee_specs, telecom_specs
 
-RAW_DIR = PROJECT_ROOT / "data" / "raw"
+RAW_DIR = datasets.raw_dir()
 FINDINGS_PATH = PROJECT_ROOT / "memory" / "data_findings.json"
 
 
 def main() -> None:
     argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter).parse_args()
-    specs = telecom_specs()
+    ieee = datasets.active() == "ieee"
+    specs = ieee_specs() if ieee else telecom_specs()
     tables = {name: pd.read_parquet(RAW_DIR / f"{name}.parquet") for name in specs}
-    data_cfg = yaml.safe_load((PROJECT_ROOT / "configs" / "data.yaml").read_text())["data"]
-    window = (pd.Timestamp(data_cfg["time_range"]["start"]), pd.Timestamp(data_cfg["time_range"]["end"]))
+    if ieee:
+        window = None
+    else:
+        data_cfg = yaml.safe_load((PROJECT_ROOT / "configs" / "data.yaml").read_text())["data"]
+        window = (pd.Timestamp(data_cfg["time_range"]["start"]), pd.Timestamp(data_cfg["time_range"]["end"]))
 
     manifest = json.loads((PROCESSED_DIR / "feature_manifest.json").read_text())
     train = load_split("train", PROCESSED_DIR)
     context = DataContext(
-        tables=tables, specs=specs, time_window=window, features=train[manifest["features"]],
+        tables=tables, specs=specs, time_window=window,
+        parent_table="transaction" if ieee else "customers", label_table=None if ieee else "snapshot_labels",
+        entity_col="TransactionID" if ieee else "subscriber_id", features=train[manifest["features"]],
         y=train[LABEL].to_numpy(), categorical=list(manifest["categorical"]),
         seed=load_config()["training"]["seed"])
 
