@@ -2,7 +2,7 @@ import pytest
 
 from agents.decision import decide
 from agents.graph import build_agent, load_champion
-from agents.llm_proposer import FallbackProposer, LLMProposal, LLMProposer
+from agents.llm_proposer import FallbackProposer, LLMProposal, LLMProposer, ParamSetting
 from agents.proposers import RuleProposer
 from agents.spec import ExperimentSpec
 from memory.store import MemoryStore
@@ -218,7 +218,7 @@ def make_llm_proposer(llm):
 
 
 def test_llm_proposal_becomes_a_spec():
-    llm = ScriptedLLM(LLMProposal(groups=["usage", "network"], windows=[30], max_depth=4,
+    llm = ScriptedLLM(LLMProposal(groups=["usage", "network"], windows=[30], settings=[ParamSetting(name="max_depth", value=4)],
                                   hypothesis="usage carries the signal; network was borderline"))
     candidate = make_llm_proposer(llm).propose(spec(), {"lessons": ["usage matters"], "tried": []})
     assert candidate.groups == ["usage", "network"]
@@ -250,8 +250,8 @@ def test_llm_can_choose_to_stop():
 def test_agent_refuses_unsafe_llm_proposals_then_accepts_a_safe_one(store):
     llm = ScriptedLLM(
         LLMProposal(groups=["usage", "secrets"], windows=[7], hypothesis="invented group"),
-        LLMProposal(groups=["usage"], windows=[7], max_depth=99, hypothesis="absurd depth"),
-        LLMProposal(groups=["usage", "risk"], windows=[7, 30], max_depth=4, hypothesis="safe"),
+        LLMProposal(groups=["usage"], windows=[7], settings=[ParamSetting(name="max_depth", value=99)], hypothesis="absurd depth"),
+        LLMProposal(groups=["usage", "risk"], windows=[7, 30], settings=[ParamSetting(name="max_depth", value=4)], hypothesis="safe"),
     )
     runner = FakeRunner()
     agent = build_agent(runner, store, make_llm_proposer(llm), CONFIG, "d", log=lambda _m: None)
@@ -296,3 +296,20 @@ def test_proposal_schema_has_no_free_form_dictionary():
     schema = LLMProposal.model_json_schema()
     for name, field in schema["properties"].items():
         assert "additionalProperties" not in field, f"{name} is a free-form object"
+
+def _count_keys(node, keys) -> int:
+    if isinstance(node, dict):
+        return sum((k in keys) + _count_keys(v, keys) for k, v in node.items())
+    if isinstance(node, list):
+        return sum(_count_keys(v, keys) for v in node)
+    return 0
+
+
+def test_proposal_schema_stays_simple_enough_for_the_api():
+    """A live call was rejected with 'Schemas contains too many parameters with union types'
+    when 17 hyperparameters were each `float | None`. Scripted doubles cannot catch that, so
+    bound the schema's complexity here: no unions at all, and a small number of properties."""
+    schema = LLMProposal.model_json_schema()
+    assert _count_keys(schema, {"anyOf", "oneOf", "allOf"}) == 0
+    assert len(schema["properties"]) <= 10
+    assert sum(len(d.get("properties", {})) for d in schema.get("$defs", {}).values()) <= 5

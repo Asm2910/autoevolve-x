@@ -17,8 +17,7 @@ chat = pytest.importorskip("langchain_anthropic")
 
 ANSWER = {
     "stop": False, "stop_reason": "", "model": "xgboost", "groups": ["usage", "network"], "windows": [30, 90],
-    "n_estimators": None, "max_depth": 4, "learning_rate": None, "subsample": None,
-    "colsample_bytree": None, "min_child_weight": None, "C": None,
+    "settings": [{"name": "max_depth", "value": 4}],
     "hypothesis": "usage drives the signal",
 }
 
@@ -48,4 +47,5 @@ def test_request_shape_and_response_parsing(monkeypatch):
     assert "temperature" not in seen
     assert "tools" not in seen  # no forced tool calling
     assert seen["output_config"]["format"]["type"] == "json_schema"
+    assert "anyOf" not in json.dumps(seen["output_config"]["format"]["schema"])  # union types were rejected live
     assert spec.key() == 'xgboost|network,usage|30,90|{"max_depth": 4.0}'
