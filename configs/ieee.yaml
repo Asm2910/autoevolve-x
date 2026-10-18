@@ -107,3 +107,4 @@ agent_platform:
   price_per_mtok: {input: 3.0, output: 15.0}   # assumed US$ per million tokens; set to your plan's rates
   kill_switch_file: memory/STOP   # create this file to stop a running agent: touch memory/STOP
   trace_dir: memory/traces        # one JSONL trace file per run
+  pushgateway_url: ""             # e.g. http://localhost:9091 ; the PUSHGATEWAY_URL environment variable overrides it

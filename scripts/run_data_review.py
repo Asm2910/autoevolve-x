@@ -21,6 +21,7 @@ from agentkit.budget import Budget
 from agentkit.data_access import load_split
 from agentkit.tracing import Observer, TraceLog
 from models.training import LABEL, PROCESSED_DIR, PROJECT_ROOT, load_config
+from observability.push import push_at_exit
 from swarm.data import DataContext, DataRequest, DataSwarm, ieee_specs, telecom_specs
 
 RAW_DIR = datasets.raw_dir()
@@ -29,6 +30,7 @@ FINDINGS_PATH = PROJECT_ROOT / "memory" / "data_findings.json"
 
 def main() -> None:
     argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter).parse_args()
+    push_at_exit("run_data_review")
     ieee = datasets.active() == "ieee"
     specs = ieee_specs() if ieee else telecom_specs()
     tables = {name: pd.read_parquet(RAW_DIR / f"{name}.parquet") for name in specs}

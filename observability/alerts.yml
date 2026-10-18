@@ -51,3 +51,28 @@ groups:
           severity: warning
         annotations:
           summary: Many prediction requests were rejected for missing or invalid features. A client may have changed.
+  - name: autoevolve-agents
+    rules:
+      - alert: AgentStepsFailed
+        expr: sum(agent_failures_total) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: The last agent runs had steps that failed.
+
+      - alert: LlmSpendHigh
+        expr: sum(llm_cost_usd_total) > 1.5
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: The last agent runs spent more than 1.50 US dollars on the language model.
+
+      - alert: AgentRunsStale
+        expr: time() - max(agent_run_last_timestamp_seconds) > 604800
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: No agent script has reported for a week.

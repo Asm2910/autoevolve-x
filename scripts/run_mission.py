@@ -20,6 +20,8 @@ from mission.plan import Mission
 from mission.report import mission_markdown, mission_payload
 from mission.services import build_services, save_report
 from models.training import PROJECT_ROOT, load_config
+from observability import agent_metrics as metrics
+from observability.push import push_at_exit
 
 
 def main() -> None:
@@ -30,6 +32,7 @@ def main() -> None:
     parser.add_argument("--iterations", type=int, default=None, help="experiments per improvement round")
     parser.add_argument("--workers", type=int, default=1, help="models trained at once in the arena (Ray when above 1)")
     args = parser.parse_args()
+    push_at_exit("run_mission")
 
     platform = load_config().get("agent_platform", {})
     budget = Budget.from_config(platform, PROJECT_ROOT)
@@ -41,6 +44,8 @@ def main() -> None:
         state = run_mission(mission, services, budget=budget, observer=observer)
     finally:
         close()
+    metrics.MISSION_ROUNDS.set(state.get("round", 0))
+    metrics.MISSION_HALTED.set(1 if state.get("halted") else 0)
     markdown = mission_markdown(state)
     save_report(markdown, mission_payload(state))
     print("\n" + markdown)

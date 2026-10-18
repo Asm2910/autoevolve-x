@@ -9,6 +9,26 @@ services:
       - "8000:8000"
     restart: unless-stopped
 
+  pushgateway:
+    image: prom/pushgateway:v1.11.1
+    container_name: autoevolve-x-pushgateway
+    ports:
+      - "9091:9091"
+    restart: unless-stopped
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v3.17.1
+    container_name: autoevolve-x-mlflow
+    command: >
+      mlflow server --host 0.0.0.0 --port 5000
+      --backend-store-uri sqlite:////mlflow/mlflow.db
+      --default-artifact-root /mlflow/artifacts
+    volumes:
+      - mlflow-data:/mlflow
+    ports:
+      - "5001:5000"
+    restart: unless-stopped
+
   prometheus:
     image: prom/prometheus:v3.5.0
     container_name: autoevolve-x-prometheus
@@ -23,6 +43,7 @@ services:
       - "9090:9090"
     depends_on:
       - autoevolve-api
+      - pushgateway
     restart: unless-stopped
 
   grafana:
@@ -46,5 +67,6 @@ services:
     restart: unless-stopped
 
 volumes:
+  mlflow-data:
   prometheus-data:
   grafana-data:

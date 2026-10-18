@@ -2,8 +2,8 @@
 
 These live in their own registry, separate from the API's. Missions are batch jobs that start
 and finish, so a scraper would usually miss them; they are pushed to a Pushgateway (added in
-the observability phase). Until then the same numbers are available through `snapshot()` and
-in the JSONL trace log.
+the observability phase, see observability/push.py). The same numbers are also available through
+`snapshot()` and in the JSONL trace log.
 """
 
 from __future__ import annotations
@@ -41,6 +41,18 @@ EVAL_FINDINGS = Counter(
 )
 BEST_PR_AUC = Gauge(
     "agent_best_validation_pr_auc", "Validation PR-AUC of the current champion", registry=AGENT_REGISTRY
+)
+AGENT_RUN_LAST = Gauge(
+    "agent_run_last_timestamp_seconds", "Unix time the last agent script finished", registry=AGENT_REGISTRY
+)
+AGENT_RUN_SECONDS = Gauge(
+    "agent_run_duration_seconds", "Wall-clock time of the last agent script", registry=AGENT_REGISTRY
+)
+MISSION_ROUNDS = Gauge(
+    "mission_rounds_completed", "Improvement rounds finished in the last mission", registry=AGENT_REGISTRY
+)
+MISSION_HALTED = Gauge(
+    "mission_halted", "1 if the last mission was stopped by the budget or kill switch", registry=AGENT_REGISTRY
 )
 
 

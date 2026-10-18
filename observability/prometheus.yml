@@ -10,3 +10,8 @@ scrape_configs:
     metrics_path: /metrics
     static_configs:
       - targets: ["autoevolve-api:8000"]
+  # Batch jobs (missions, reviews) push their final numbers here when they finish.
+  - job_name: pushgateway
+    honor_labels: true
+    static_configs:
+      - targets: ["pushgateway:9091"]

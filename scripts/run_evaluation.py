@@ -18,6 +18,7 @@ from agentkit.tracing import Observer, TraceLog
 from agents.spec import ExperimentSpec
 from arena.registry import names
 from models.training import PROCESSED_DIR, PROJECT_ROOT, load_config, select_features
+from observability.push import push_at_exit
 from swarm.evaluation import EvalContext, EvalRequest, EvaluationSwarm
 from tools.experiment_runner import ExperimentRunner
 
@@ -29,6 +30,7 @@ def main() -> None:
     parser.add_argument("--model", default=None, choices=names(), help="model to evaluate (default: baseline)")
     parser.add_argument("--bootstrap", type=int, default=200)
     args = parser.parse_args()
+    push_at_exit("run_evaluation")
 
     config = load_config()
     runner = ExperimentRunner(config)
