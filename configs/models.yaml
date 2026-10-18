@@ -92,6 +92,7 @@ ablation:
 agent:
   max_iterations: 6
   min_gain: 0.01        # smallest validation PR-AUC gain worth adopting
+  llm_model: claude-sonnet-5-5   # model used by the language-model proposer and `scripts.ask --llm`; AUTOEVOLVE_LLM_MODEL overrides it
   bootstrap_samples: 300
 
 agent_platform:

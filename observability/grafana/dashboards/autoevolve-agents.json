@@ -166,7 +166,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(llm_cost_usd_total)",
+          "expr": "sum(llm_cost_usd_total) or vector(0)",
           "legendFormat": "",
           "refId": "A",
           "instant": true
@@ -227,7 +227,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(llm_tokens_total)",
+          "expr": "sum(llm_tokens_total) or vector(0)",
           "legendFormat": "",
           "refId": "A",
           "instant": true
