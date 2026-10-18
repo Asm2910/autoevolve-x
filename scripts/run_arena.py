@@ -15,8 +15,9 @@ import time
 
 import pandas as pd
 
+from arena.executor import make_executor
 from arena.registry import names
-from arena.runner import build_tasks, markdown_report, rank_results, run_arena
+from arena.runner import ArenaData, build_tasks, markdown_report, rank_results, run_arena
 from models.tracking import code_version, log_arena
 from models.training import LABEL, PROCESSED_DIR, load_config, select_features
 from scripts.train_models import file_sha256
@@ -26,6 +27,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--models", help="comma-separated model names (default: configs/models.yaml arena.models)")
     parser.add_argument("--bootstrap", type=int, help="bootstrap samples (default: arena.bootstrap_samples)")
+    parser.add_argument("--workers", type=int, default=None,
+                        help="models trained at the same time; above 1 uses Ray (default: arena.workers)")
     parser.add_argument("--no-track", action="store_true", help="do not log to MLflow")
     args = parser.parse_args()
 
@@ -37,6 +40,7 @@ def main() -> None:
         parser.error(f"unknown models {unknown}; choose from {names()}")
     n_boot = args.bootstrap or arena_cfg.get("bootstrap_samples", 200)
     review_fraction = config["training"]["review_fraction"]
+    workers = args.workers or arena_cfg.get("workers", 1)
 
     manifest = json.loads((PROCESSED_DIR / "feature_manifest.json").read_text())
     features = select_features(manifest, config["features"]["groups"], config["features"]["windows"])
@@ -51,7 +55,13 @@ def main() -> None:
           f"{len(train):,} training rows, {len(validation):,} validation rows ({int(y_val.sum())} positives)")
     started = time.time()
     tasks = build_tasks(config, selected, numeric, categorical)
-    results = run_arena(tasks, train[features], y_train, validation[features], y_val, review_fraction)
+    data = ArenaData(train[features], y_train, validation[features], y_val)
+    executor = make_executor(workers, arena_cfg.get("task_timeout_seconds"))
+    print(f"Executor: {executor.name} ({executor.workers} worker{'s' if executor.workers != 1 else ''})")
+    try:
+        results = run_arena(tasks, data, review_fraction, executor)
+    finally:
+        executor.close()
     print(f"\nTraining finished in {time.time() - started:.0f}s. Bootstrapping {n_boot} paired resamples ...")
 
     rows = rank_results(results, y_val, n_boot, config["training"]["seed"])

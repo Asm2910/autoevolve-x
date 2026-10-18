@@ -7,7 +7,7 @@ agent-level observability. Each phase is merged into `main` on its own.
 | Phase | Branch | Status | What it adds |
 | --- | --- | --- | --- |
 | 10 | `phase10-model-arena` | done | Eight algorithms behind one registry, a fair validation-only arena with paired confidence intervals, fresh data (v2) |
-| 11 | `phase11-ray-engine-agent-platform` | planned | Ray executor, guardrails, harness, context engineering |
+| 11 | `phase11-ray-agent-platform` | done | Ray executor with benchmark; budgets, kill switch, guardrails, harness, context engineering, traces and metrics |
 | 12 | `phase12-eval-swarm` | planned | Performance, segment, error and drift agents |
 | 13 | `phase13-judge-utility` | planned | Utility-score judge |
 | 14 | `phase14-data-swarm` | planned | Schema, quality, relationship and feature agents |
@@ -37,6 +37,34 @@ which is why a cost-aware judge is added in phase 13.
 
 **Known limitation.** `train_models` still serves the model with the best validation PR-AUC,
 even when several are tied. The utility-score judge in phase 13 replaces that rule.
+
+## Phase 11: Ray and the agent platform
+
+**Ray.** `python -m scripts.run_arena --workers 4` trains several models at once. The data goes into
+Ray's shared object store once; each task takes one CPU and is told to use only its share of the
+cores, so parallel models do not fight each other. A crashed worker is retried once, a model that
+raises becomes a failed result, a task over the time limit is cancelled, and if Ray is missing the
+arena runs sequentially. `python -m scripts.benchmark_ray` times 1, 2 and 4 workers and checks that
+the scores agree. On my 2-core sandbox the speed-up was only 1.07x, because the machine had no
+spare cores; the benchmark on your Mac is the meaningful one.
+
+**Agent platform (`agentkit/`).**
+- `budget.py`: limits on calls, tokens, cost, time and experiments, plus a kill switch file.
+- `guardrails.py`: sanitising and delimiting untrusted text, with an instruction-injection filter.
+- `data_access.py`: the only door agents use to read data; the test split is refused.
+- `harness.py`: a base agent with a typed contract, timeout, retries, a tool allow-list and traces.
+- `tracing.py` and `observability/agent_metrics.py`: a JSONL trace and Prometheus metrics per step.
+- `context.py`: token-budgeted prompts, history compaction, per-agent context policy, prompt versions.
+- `llm.py`: token accounting, and recording, replay and scripted model doubles.
+
+**Evaluations.** `tests/agent_evals/` runs whole missions with a scripted model: limits are
+respected, repeated and out-of-bounds proposals are refused, hostile text in memory is neutralised,
+the test split is unreachable, and a recorded mission replays to identical decisions.
+
+**Limits to know.** The text filter is pattern-based and can be evaded; the structural controls
+are what make an injection harmless. A step that times out stops being waited for but its thread
+cannot be killed, so long work should run in Ray tasks. Metrics are collected in their own registry
+and will be pushed to Prometheus in the observability phase.
 
 ## Operational notes
 

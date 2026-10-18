@@ -205,7 +205,7 @@ class ScriptedLLM:
         assert method == "json_schema"
         return self
 
-    def invoke(self, messages):
+    def invoke(self, messages, config=None):
         self.prompts.append(messages)
         reply = self.replies.pop(0)
         if isinstance(reply, Exception):

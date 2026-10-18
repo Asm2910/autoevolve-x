@@ -31,62 +31,62 @@ class ModelFamily:
     name: str
     kind: str  # linear | bagging | boosting | anomaly
     preprocessing: str  # scaled | imputed | native
-    make: Callable[[dict, int], object]
+    make: Callable[[dict, int, int], object]
     bounds: Bounds
     summary: str
 
 
 # ---- factories (imports are lazy so unused libraries cost nothing) -------------------------
-def _logistic_regression(params: dict, seed: int):
+def _logistic_regression(params: dict, seed: int, threads: int):
     from sklearn.linear_model import LogisticRegression
 
-    return LogisticRegression(random_state=seed, **params)
+    return LogisticRegression(random_state=seed, **params)  # single-threaded
 
 
-def _random_forest(params: dict, seed: int):
+def _random_forest(params: dict, seed: int, threads: int):
     from sklearn.ensemble import RandomForestClassifier
 
-    return RandomForestClassifier(n_jobs=-1, random_state=seed, class_weight="balanced_subsample", **params)
+    return RandomForestClassifier(n_jobs=threads, random_state=seed, class_weight="balanced_subsample", **params)
 
 
-def _extra_trees(params: dict, seed: int):
+def _extra_trees(params: dict, seed: int, threads: int):
     from sklearn.ensemble import ExtraTreesClassifier
 
     # "balanced_subsample" needs bootstrap sampling, which extra-trees does not use by default
-    return ExtraTreesClassifier(n_jobs=-1, random_state=seed, class_weight="balanced", **params)
+    return ExtraTreesClassifier(n_jobs=threads, random_state=seed, class_weight="balanced", **params)
 
 
-def _xgboost(params: dict, seed: int):
+def _xgboost(params: dict, seed: int, threads: int):
     from xgboost import XGBClassifier
 
-    return XGBClassifier(tree_method="hist", eval_metric="logloss", n_jobs=-1, random_state=seed, **params)
+    return XGBClassifier(tree_method="hist", eval_metric="logloss", n_jobs=threads, random_state=seed, **params)
 
 
-def _lightgbm(params: dict, seed: int):
+def _lightgbm(params: dict, seed: int, threads: int):
     from lightgbm import LGBMClassifier
 
     # subsample only takes effect when subsample_freq > 0
-    return LGBMClassifier(subsample_freq=1, n_jobs=-1, random_state=seed, verbose=-1, **params)
+    return LGBMClassifier(subsample_freq=1, n_jobs=threads, random_state=seed, verbose=-1, **params)
 
 
-def _hist_gradient_boosting(params: dict, seed: int):
+def _hist_gradient_boosting(params: dict, seed: int, threads: int):
     from sklearn.ensemble import HistGradientBoostingClassifier
 
     return HistGradientBoostingClassifier(early_stopping=False, random_state=seed, **params)
 
 
-def _catboost(params: dict, seed: int):
+def _catboost(params: dict, seed: int, threads: int):
     from catboost import CatBoostClassifier
 
     return CatBoostClassifier(
-        random_seed=seed, thread_count=-1, verbose=0, allow_writing_files=False, **params
+        random_seed=seed, thread_count=threads, verbose=0, allow_writing_files=False, **params
     )
 
 
-def _isolation_forest(params: dict, seed: int):
+def _isolation_forest(params: dict, seed: int, threads: int):
     from arena.estimators import IsolationForestScorer
 
-    return IsolationForestScorer(random_state=seed, **params)
+    return IsolationForestScorer(random_state=seed, n_jobs=threads, **params)
 
 
 REGISTRY: dict[str, ModelFamily] = {
@@ -205,12 +205,18 @@ def _preprocessor(mode: str, numeric: list[str], categorical: list[str]) -> Colu
     return ColumnTransformer([("numeric", numeric_step, numeric), ("categorical", categorical_step, categorical)])
 
 
-def build_pipeline(name: str, params: dict, numeric: list[str], categorical: list[str], seed: int) -> Pipeline:
-    """Preprocessing and model in one artifact, so serving needs no extra code."""
+def build_pipeline(
+    name: str, params: dict, numeric: list[str], categorical: list[str], seed: int, threads: int = -1
+) -> Pipeline:
+    """Preprocessing and model in one artifact, so serving needs no extra code.
+
+    `threads` caps the model's CPU threads (-1 = all). Parallel arena runs set it so that
+    several models do not each grab every core.
+    """
     family = get_family(name)
     return Pipeline(
         [
             ("preprocess", _preprocessor(family.preprocessing, numeric, categorical)),
-            ("model", family.make(dict(params), seed)),
+            ("model", family.make(dict(params), seed, threads)),
         ]
     )

@@ -67,6 +67,8 @@ arena:
   # Compared by scripts.run_arena on TRAIN and VALIDATION snapshots only.
   models: [logistic_regression, random_forest, extra_trees, xgboost, lightgbm, hist_gradient_boosting, catboost, isolation_forest]
   bootstrap_samples: 200
+  workers: 1                  # >1 trains models in parallel on Ray (pip install ray)
+  task_timeout_seconds: 1800  # a model still training after this is cancelled and reported as failed
 
 tracking:
   enabled: true
@@ -81,3 +83,16 @@ agent:
   max_iterations: 6
   min_gain: 0.01        # smallest validation PR-AUC gain worth adopting
   bootstrap_samples: 300
+
+agent_platform:
+  # Hard limits for one agent run, enforced in code. The loop stops cleanly with a stated reason.
+  max_llm_calls: 60
+  max_input_tokens: 400000
+  max_output_tokens: 60000
+  max_cost_usd: 2.0
+  max_seconds: 3600
+  max_experiments: 15
+  max_context_tokens: 6000        # budget for the evidence section of one prompt (estimated)
+  price_per_mtok: {input: 3.0, output: 15.0}   # assumed US$ per million tokens; set to your plan's rates
+  kill_switch_file: memory/STOP   # create this file to stop a running agent: touch memory/STOP
+  trace_dir: memory/traces        # one JSONL trace file per run

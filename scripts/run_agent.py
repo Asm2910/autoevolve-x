@@ -12,8 +12,11 @@ from __future__ import annotations
 
 import argparse
 import os
+from datetime import datetime
 from pathlib import Path
 
+from agentkit.budget import Budget
+from agentkit.tracing import Observer, TraceLog
 from agents.graph import build_agent, load_champion
 from agents.proposers import RuleProposer
 from memory.embedding import get_embedder
@@ -35,7 +38,7 @@ def load_env_file(path: Path = PROJECT_ROOT / ".env") -> None:
             os.environ.setdefault(key.strip(), value.strip().strip("'\""))
 
 
-def make_proposer(kind: str, config: dict):
+def make_proposer(kind: str, config: dict, budget: Budget, observer: Observer):
     rules = RuleProposer(config["models"]["xgboost"])
     if kind == "rules":
         return rules
@@ -59,6 +62,9 @@ def make_proposer(kind: str, config: dict):
         list(config["features"]["groups"]),
         list(config["features"]["windows"]),
         float(agent_cfg["min_gain"]),
+        budget=budget,
+        observer=observer,
+        max_context_tokens=int(config.get("agent_platform", {}).get("max_context_tokens", 6000)),
     )
     return FallbackProposer(primary, rules)
 
@@ -73,7 +79,11 @@ def main() -> None:
     config = load_config()
     max_iterations = args.iterations or int(config["agent"]["max_iterations"])
     dataset_sha256 = file_sha256(PROCESSED_DIR / "features.parquet")
-    proposer = make_proposer(args.proposer, config)
+    platform = config.get("agent_platform", {})
+    budget = Budget.from_config(platform, PROJECT_ROOT)
+    trace_path = PROJECT_ROOT / platform.get("trace_dir", "memory/traces") / f"agent-{datetime.now():%Y%m%d-%H%M%S}.jsonl"
+    observer = Observer(TraceLog(trace_path))
+    proposer = make_proposer(args.proposer, config, budget, observer)
 
     vectors = None if args.embedder == "none" else VectorIndex(get_embedder(args.embedder))
     store = MemoryStore(vectors=vectors)
@@ -83,7 +93,7 @@ def main() -> None:
     print(f"Champion at start: {champion.key()}")
     runner.set_champion(champion)
 
-    agent = build_agent(runner, store, proposer, config, dataset_sha256)
+    agent = build_agent(runner, store, proposer, config, dataset_sha256, budget=budget, observer=observer)
     state = agent.invoke(
         {
             "iteration": 0,
@@ -102,6 +112,9 @@ def main() -> None:
         print(f"Stopped early: {state['stop_reason']}")
     adopted = [e for e in state["history"] if e["verdict"] == "adopt"]
     print(f"\nAdopted {len(adopted)} of {len(state['history'])}. Champion now: {runner.champion.key()}")
+    print(f"Budget used: {budget.snapshot()}")
+    print(f"Trace: {trace_path}")
+    print("To stop a running agent from another terminal:  touch memory/STOP")
     print("The test snapshots were not used. Confirm a champion on test only once, at the end.")
 
 
