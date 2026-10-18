@@ -22,7 +22,7 @@ from models.training import PROCESSED_DIR, PROJECT_ROOT, load_config
 from research.agent import ResearchAgent
 from research.corpus import collect
 from research.retriever import Retriever
-from scripts.run_agent import load_env_file
+from scripts.run_agent import llm_model_name, load_env_file
 
 
 def main() -> None:
@@ -44,7 +44,7 @@ def main() -> None:
             raise SystemExit("ANTHROPIC_API_KEY is not set. Put it in .env or export it, or run without --llm.")
         from langchain_anthropic import ChatAnthropic
 
-        llm = ChatAnthropic(model=config["agent"]["llm_model"], max_tokens=700, timeout=60, max_retries=2)
+        llm = ChatAnthropic(model=llm_model_name(config), max_tokens=700, timeout=60, max_retries=2)
 
     store = MemoryStore()
     try:

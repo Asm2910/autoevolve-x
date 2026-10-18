@@ -40,6 +40,14 @@ def load_env_file(path: Path = PROJECT_ROOT / ".env") -> None:
             os.environ.setdefault(key.strip(), value.strip().strip("'\""))
 
 
+DEFAULT_LLM_MODEL = "claude-sonnet-5-5"
+
+
+def llm_model_name(config: dict) -> str:
+    """The model for language-model calls: the AUTOEVOLVE_LLM_MODEL variable, else agent.llm_model, else the default."""
+    return os.environ.get("AUTOEVOLVE_LLM_MODEL") or config.get("agent", {}).get("llm_model") or DEFAULT_LLM_MODEL
+
+
 def make_proposer(kind: str, config: dict, budget: Budget, observer: Observer):
     rules = RuleProposer(config["models"]["xgboost"])
     if kind == "rules":
@@ -57,7 +65,7 @@ def make_proposer(kind: str, config: dict, budget: Budget, observer: Observer):
 
     agent_cfg = config["agent"]
     # no `temperature`: current Claude models only accept their default
-    llm = ChatAnthropic(model=agent_cfg["llm_model"], max_tokens=1000, timeout=60, max_retries=2)
+    llm = ChatAnthropic(model=llm_model_name(config), max_tokens=1000, timeout=60, max_retries=2)
     primary = LLMProposer(
         llm,
         config["models"]["xgboost"],
