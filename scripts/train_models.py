@@ -1,6 +1,7 @@
-"""Train, tune and evaluate every model listed in configs/models.yaml.
+"""Train, tune and evaluate the candidate models (training.candidates in configs/models.yaml).
 
 Run with:  python -m scripts.train_models
+Fewer models (faster):  AUTOEVOLVE_CANDIDATES=logistic_regression,xgboost python -m scripts.train_models
 
 Protocol (no peeking):
   1. fit on the training snapshots
@@ -15,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from datetime import UTC, datetime
 
 import joblib
@@ -65,7 +67,18 @@ def main() -> None:
     grid = threshold_grid(config)
     fitted, val_probs, test_probs, thresholds, results = {}, {}, {}, {}, {}
 
-    for name, params in config["models"].items():
+    override = os.environ.get("AUTOEVOLVE_CANDIDATES")  # e.g. CI trains only the fast models
+    candidates = (
+        [name.strip() for name in override.split(",") if name.strip()]
+        if override
+        else training.get("candidates") or list(config["models"])
+    )
+    unknown = [name for name in candidates if name not in config["models"]]
+    if unknown:
+        raise SystemExit(f"No hyperparameters in configs/models.yaml for: {unknown}")
+    print(f"Candidates: {', '.join(candidates)}")
+    for name in candidates:
+        params = config["models"][name]
         print(f"\nTraining {name} ...")
         pipeline = build_pipeline(name, params, numeric, categorical, seed)
         pipeline.fit(train[features], train[LABEL])

@@ -152,3 +152,39 @@ def log_agent_candidate(
             | {"diff_ci_low": float(result["diff_ci"][0]), "diff_ci_high": float(result["diff_ci"][1])}
         )
         return run.info.run_id
+
+
+def log_arena(config: dict, rows: list[dict], run_info: dict, report_path: Path) -> str:
+    """One parent run for the arena plus a child run per candidate ('<name>-arena' experiment)."""
+    arena_config = {
+        **config,
+        "tracking": {
+            **config.get("tracking", {}),
+            "experiment_name": f"{config.get('tracking', {}).get('experiment_name', 'autoevolve-x')}-arena",
+        },
+    }
+    setup(arena_config)
+    version = code_version()
+    tags = {k: str(v) for k, v in version.items()} | {
+        "stage": "arena",
+        "dataset_sha256": run_info["dataset_sha256"],
+    }
+    with mlflow.start_run(run_name=f"arena-{version['git_commit']}") as parent:
+        mlflow.set_tags(tags)
+        mlflow.log_params({"n_features": run_info["n_features"], "n_models": len(rows)})
+        mlflow.log_artifact(str(report_path))
+        for row in rows:
+            with mlflow.start_run(run_name=row["model"], nested=True):
+                mlflow.set_tags(tags | {"model": row["model"], "kind": row["kind"], "status": row["status"]})
+                if row["status"] == "failed":
+                    mlflow.set_tag("error", row["error"][:500])
+                    continue
+                model_params: dict = {}
+                _flatten("model", config["models"][row["model"]], model_params)
+                mlflow.log_params(model_params)
+                metrics = _numeric({k: row[k] for k in (
+                    "pr_auc", "roc_auc", "precision_at_review", "recall_at_review",
+                    "train_seconds", "predict_seconds", "size_mb", "diff_vs_best")})
+                metrics["pr_auc_ci_low"], metrics["pr_auc_ci_high"] = row["pr_auc_ci95"]
+                mlflow.log_metrics(metrics)
+        return parent.info.run_id

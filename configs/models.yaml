@@ -2,8 +2,11 @@
 # which features, which models, which hyperparameters.
 training:
   seed: 42
-  model_version: "2.0.0"
+  model_version: "3.0.0"
   selection_metric: pr_auc       # the model with the best validation value is served
+  # Models trained by scripts.train_models (the served model is the best of these on validation).
+  # Every entry must have a block under `models:` below. Remove names to speed up CI.
+  candidates: [logistic_regression, random_forest, extra_trees, xgboost, lightgbm, hist_gradient_boosting, catboost]
   bootstrap_samples: 500         # for 95% confidence intervals on the test set
   review_fraction: 0.01          # share of subscribers analysts can review per snapshot
   threshold_grid:
@@ -27,6 +30,43 @@ models:
     subsample: 0.8
     colsample_bytree: 0.5
     min_child_weight: 5
+  random_forest:
+    n_estimators: 300
+    max_depth: 12
+    min_samples_leaf: 20
+    max_features: 0.1
+  extra_trees:
+    n_estimators: 300
+    max_depth: 14
+    min_samples_leaf: 20
+    max_features: 0.2
+  lightgbm:
+    n_estimators: 300
+    num_leaves: 8
+    learning_rate: 0.05
+    subsample: 0.8
+    colsample_bytree: 0.5
+    min_child_samples: 40
+  hist_gradient_boosting:
+    max_iter: 300
+    max_depth: 3
+    learning_rate: 0.05
+    min_samples_leaf: 40
+    l2_regularization: 1.0
+  catboost:
+    iterations: 300
+    depth: 4
+    learning_rate: 0.05
+    l2_leaf_reg: 5.0
+  isolation_forest:        # unsupervised: never sees labels; arena-only reality check
+    n_estimators: 200
+    max_samples: 1024
+    max_features: 1.0
+
+arena:
+  # Compared by scripts.run_arena on TRAIN and VALIDATION snapshots only.
+  models: [logistic_regression, random_forest, extra_trees, xgboost, lightgbm, hist_gradient_boosting, catboost, isolation_forest]
+  bootstrap_samples: 200
 
 tracking:
   enabled: true

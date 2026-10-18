@@ -1,10 +1,12 @@
-"""Per-prediction explanations from XGBoost's built-in exact tree contributions.
+"""Per-prediction explanations from the boosters' built-in exact tree contributions.
 
-`pred_contribs=True` returns SHAP values for tree models (log-odds units), so no
-extra dependency is needed. Contributions of one-hot columns are summed back onto
-the original feature, and for every row:
+XGBoost (`pred_contribs`), LightGBM (`pred_contrib`) and CatBoost (`ShapValues`) all return
+SHAP values for tree models in log-odds units, so no extra dependency is needed.
+Contributions of one-hot columns are summed back onto the original feature, and for every row:
 
     bias + sum(contributions) == log-odds of the predicted probability
+
+Other models (linear, forests, scikit-learn boosting) are served without explanations.
 """
 
 from __future__ import annotations
@@ -13,11 +15,17 @@ import numpy as np
 import pandas as pd
 import xgboost as xgb
 from sklearn.pipeline import Pipeline
-from xgboost import XGBClassifier
+
+
+EXPLAINABLE_LIBRARIES = {"xgboost", "lightgbm", "catboost"}
+
+
+def _library(estimator) -> str:
+    return type(estimator).__module__.split(".")[0]
 
 
 def supports_explanations(pipeline) -> bool:
-    return isinstance(pipeline, Pipeline) and isinstance(pipeline[-1], XGBClassifier)
+    return isinstance(pipeline, Pipeline) and _library(pipeline[-1]) in EXPLAINABLE_LIBRARIES
 
 
 def _source_features(pipeline: Pipeline) -> list[str]:
@@ -36,12 +44,25 @@ def _source_features(pipeline: Pipeline) -> list[str]:
     return sources
 
 
+def _raw_contributions(model, matrix: np.ndarray) -> np.ndarray:
+    """(rows, columns + 1) array of log-odds contributions; the last column is the bias."""
+    library = _library(model)
+    if library == "xgboost":
+        return model.get_booster().predict(xgb.DMatrix(matrix), pred_contribs=True)
+    if library == "lightgbm":
+        return np.asarray(model.predict(matrix, pred_contrib=True))
+    if library == "catboost":
+        from catboost import Pool
+
+        return np.asarray(model.get_feature_importance(Pool(matrix), type="ShapValues"))
+    raise ValueError(f"explanations are not supported for {type(model).__name__}")
+
+
 def contributions(pipeline: Pipeline, frame: pd.DataFrame) -> tuple[pd.DataFrame, np.ndarray]:
     """Log-odds contribution of each original feature, plus the per-row bias."""
     sources = _source_features(pipeline)
     matrix = np.asarray(pipeline.named_steps["preprocess"].transform(frame), dtype=np.float32)
-    booster = pipeline[-1].get_booster()
-    raw = booster.predict(xgb.DMatrix(matrix), pred_contribs=True)
+    raw = _raw_contributions(pipeline[-1], matrix)
     if raw.shape[1] != len(sources) + 1:
         raise ValueError("contribution columns do not match the preprocessed features")
 

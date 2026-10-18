@@ -267,7 +267,7 @@ def test_agent_refuses_unsafe_llm_proposals_then_accepts_a_safe_one(store):
 
 def test_malformed_model_output_is_a_refusal_not_a_crash(store):
     llm = ScriptedLLM(
-        LLMProposal(model="random_forest", groups=["usage"], windows=[7]),
+        LLMProposal(model="neural_net", groups=["usage"], windows=[7]),
         LLMProposal(groups=[], windows=[7]),
         LLMProposal(groups=["usage"], windows=[7], hypothesis="fine"),
     )

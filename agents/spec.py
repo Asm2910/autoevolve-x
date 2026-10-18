@@ -9,32 +9,30 @@ training happens, so a proposer can only choose among safe, well-defined actions
 from __future__ import annotations
 
 import json
-from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-# name -> (minimum, maximum, integer?)
-PARAM_BOUNDS: dict[str, dict[str, tuple[float, float, bool]]] = {
-    "xgboost": {
-        "n_estimators": (50, 600, True),
-        "max_depth": (2, 8, True),
-        "learning_rate": (0.01, 0.3, False),
-        "subsample": (0.5, 1.0, False),
-        "colsample_bytree": (0.2, 1.0, False),
-        "min_child_weight": (1, 20, True),
-    },
-    "logistic_regression": {"C": (0.001, 10.0, False)},
-}
+from arena.registry import names, param_bounds
+
+# name -> (minimum, maximum, integer?) for every registered model
+PARAM_BOUNDS = param_bounds()
 
 
 class ExperimentSpec(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    model: Literal["xgboost", "logistic_regression"]
+    model: str
     groups: list[str] = Field(min_length=1)
     windows: list[int] = Field(min_length=1)
     params: dict[str, float] = Field(default_factory=dict)
     hypothesis: str = ""
+
+    @field_validator("model")
+    @classmethod
+    def _known_model(cls, value: str) -> str:
+        if value not in names():
+            raise ValueError(f"unknown model {value!r}; choose from {names()}")
+        return value
 
     def problems(self, allowed_groups: list[str], allowed_windows: list[int]) -> list[str]:
         """Everything wrong with this spec; an empty list means it is safe to run."""
