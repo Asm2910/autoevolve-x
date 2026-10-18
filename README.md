@@ -52,6 +52,7 @@ python -m scripts.explain_model
 
 # 4. fill the memory and run the agent
 python -m scripts.memory_cli ingest
+python -m scripts.run_mission --depth quick                 # plan, review, evaluate, improve, reflect in one graph
 python -m scripts.run_data_review                           # four data agents check the sources and features
 python -m scripts.run_evaluation                            # four evaluation agents report on the model
 python -m scripts.run_agent --iterations 4                  # rule-based, no API key needed
@@ -158,3 +159,5 @@ The API key for the language-model proposer comes from the environment. Copy `.e
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+**Ask the project:** `python -m scripts.ask "your question" [--llm]` answers from the docs, reports and memory with sources (see docs/PROGRESS.md, Phase 17).

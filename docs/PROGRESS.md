@@ -166,9 +166,33 @@ Real results (300,000-row sample, validation / sealed test):
 - The self-improving agent adopted a change on real data: deeper trees, validation PR-AUC +0.023
   (95% interval +0.019 to +0.026).
 
+## Phase 16: mission graph (planner, ML manager, reflection)
+
+`mission/` joins everything built so far into one LangGraph state machine, run by `scripts/run_mission.py`:
+
+- **Mission planner** (`mission/plan.py`): a mission (goal text plus `quick`, `standard` or `thorough` depth) becomes an
+  ordered plan from a fixed menu: data review, evaluate, arena + judge, improve, reflect. It is rule-based on purpose, so a
+  planning mistake can only pick an order of safe steps. It re-plans after seeing the data review and the baseline evaluation:
+  critical data problems cancel modelling; a healthy model with nothing to fix halves the improvement budget; otherwise the
+  swarms' ideas become the improvement step's focus.
+- **ML manager** (`mission/graph.py`, `mission/services.py`): a `dispatch` node reads the plan's pending steps and routes to
+  the next one; the steps call the data swarm, the evaluation swarm, the Ray-capable arena with the judge, and the improvement
+  agent. Order lives in data, so a second round is only a change to the list. A step that fails is recorded and the mission
+  carries on; the budget and kill switch stop it cleanly and it still reflects.
+- **Reflection** (`mission/reflection.py`): turns results into lessons that each quote their evidence (a number, an interval,
+  a verdict), writes them to shared memory, and decides whether another round is worth running (only if the last round adopted
+  a change and rounds remain). No language model writes lessons, so a lesson cannot claim more than the run showed.
+- `mission/report.py`: the mission report (`mission_report.md` and `.json`) with plan, timeline, findings, results and next steps.
+
+Limits: the planner does not read the goal text beyond logging it; depth and the swarms' findings decide the plan.
+
 ## Operational notes
 
 - Training the seven serving candidates takes about 6 minutes on a two-core machine (random forest
   and extra trees dominate). CI trains three fast models through `AUTOEVOLVE_CANDIDATES`.
 - LightGBM needs the OpenMP runtime. On macOS: `brew install libomp`.
 - The Docker image installs CatBoost (about 270 MB) only when CatBoost is the served model.
+
+## Phase 17: the research agent (local RAG)
+
+`python -m scripts.ask "Why is xgboost the served model?"` answers from the project's own README, docs, reports and memory (lessons, experiments), with sources. Retrieval is BM25 (optionally fused with embeddings). Without `--llm` it returns the closest passages. With `--llm` a model writes a short answer from numbered passages and code checks it: citations must exist, numbers must appear in the cited passages (else flagged), no citation means the answer is withheld, nothing retrieved means "I could not find this". Passages and questions are sanitised as untrusted text. Also fixed: a multi-round mission report now shows the first round's starting PR-AUC.

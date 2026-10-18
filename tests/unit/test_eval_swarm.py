@@ -177,3 +177,14 @@ def test_segment_agent_reports_only_the_biggest_shortfalls_and_summarises_the_re
     warnings = [f for f in out.findings if f.severity == "warning"]
     assert len(warnings) <= 3
     assert any(f.title.endswith("more groups are also weaker") for f in out.findings)
+
+
+def test_groups_that_cover_exactly_the_same_accounts_are_reported_once():
+    ctx = make_context(weak_segment=False)
+    missing = np.random.default_rng(6).random(N) < 0.3
+    ctx.frame = ctx.frame.assign(a__x=np.where(missing, "missing", "ok"), b__y=np.where(missing, "missing", "ok"))
+    ctx.categorical = ["a__x", "b__y"]
+    ctx.scores = np.where(missing, np.random.default_rng(7).normal(size=N), ctx.scores)
+    out = SegmentAgent(ctx).run(REQ)
+    weak = [f for f in out.findings if f.title.startswith("Weaker on")]
+    assert len(weak) == 1 and "also" in weak[0].detail and "missing" in weak[0].detail
