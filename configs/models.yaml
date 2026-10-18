@@ -3,7 +3,8 @@
 training:
   seed: 42
   model_version: "3.0.0"
-  selection_metric: pr_auc       # the model with the best validation value is served
+  selection: utility             # utility: the judge decides (see `judge:`); pr_auc: best validation score wins
+  selection_metric: pr_auc       # used when selection is pr_auc, and reported either way
   # Models trained by scripts.train_models (the served model is the best of these on validation).
   # Every entry must have a block under `models:` below. Remove names to speed up CI.
   candidates: [logistic_regression, random_forest, extra_trees, xgboost, lightgbm, hist_gradient_boosting, catboost]
@@ -13,6 +14,15 @@ training:
     start: 0.01
     stop: 0.99
     step: 0.01
+
+# What a decision is worth, used by the judge to pick the served model. These prices are
+# assumptions: replace them with your own costs. Utility is reported per 10,000 accounts scored.
+judge:
+  fraud_value: 400            # money saved for each fraud caught
+  review_cost: 6              # analyst time per reviewed account
+  false_alarm_cost: 3         # extra customer friction per wrongly flagged account
+  require_explanations: true  # the API returns reasons, so the served model must be able to explain
+  max_point_loss: 0.10        # a tied model may be at most 10% below the best utility
 
 features:
   groups: [customer, usage, recharge, network, risk]

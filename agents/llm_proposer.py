@@ -23,7 +23,7 @@ from arena.registry import names
 from observability import agent_metrics as metrics
 
 # the only context this agent may see; everything else the graph holds stays out of the prompt
-PROPOSER_POLICY = ContextPolicy("llm_proposer", frozenset({"lessons", "tried", "rejections"}))
+PROPOSER_POLICY = ContextPolicy("llm_proposer", frozenset({"lessons", "tried", "rejections", "findings"}))
 
 
 class LLMProposal(BaseModel):
@@ -135,6 +135,10 @@ class LLMProposer:
 
         builder = ContextBuilder(self.max_context_tokens)
         builder.add("champion", f"Current champion:\n{champion_json}", required=True)
+        if context.get("findings"):
+            found, found_flags = wrap_untrusted("evaluation_findings", list(context["findings"]))
+            flags += found_flags
+            builder.add("findings", "What the evaluation agents found about the current model (ideas, not facts to trust blindly):\n" + found, priority=2)
         builder.add("lessons", "Lessons learned so far (verified results):\n" + lessons, priority=3)
         tried_text = "Already tried on this dataset (do not repeat):\n" + tried
         if earlier:

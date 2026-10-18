@@ -35,6 +35,10 @@ LLM_COST = Counter(
 EXPERIMENTS = Counter(
     "experiments_total", "Experiments run by the agent, by verdict", ["verdict"], registry=AGENT_REGISTRY
 )
+EVAL_FINDINGS = Counter(
+    "evaluation_findings_total", "Findings reported by the evaluation swarm", ["agent", "severity"],
+    registry=AGENT_REGISTRY,
+)
 BEST_PR_AUC = Gauge(
     "agent_best_validation_pr_auc", "Validation PR-AUC of the current champion", registry=AGENT_REGISTRY
 )

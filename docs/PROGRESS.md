@@ -66,6 +66,51 @@ are what make an injection harmless. A step that times out stops being waited fo
 cannot be killed, so long work should run in Ray tasks. Metrics are collected in their own registry
 and will be pushed to Prometheus in the observability phase.
 
+## Phase 12: evaluation swarm
+
+Four deterministic agents in `swarm/evaluation.py`, each built on the agent harness (typed contract,
+time limit, trace record) and each answering one question about a model's validation scores:
+
+- **Performance:** PR-AUC with a bootstrap interval, precision and recall at the review cut-off, lift,
+  and whether quality holds across time periods.
+- **Segment:** recall at the review cut-off for every customer group large enough to judge. A group is
+  flagged only when the upper end of its interval stays below the overall recall, with the threshold
+  tightened for the number of groups tested (Bonferroni), so a long list of groups does not produce
+  false alarms.
+- **Error:** which features separate the frauds the model misses from the ones it catches, as
+  standardised differences, summarised by feature group.
+- **Drift:** population stability between training and validation data, reusing `monitoring/drift.py`.
+
+`EvaluationSwarm` runs all four, contains a failure in any one, ranks the findings by severity and
+writes `evaluation_report.{md,json}`. Warnings become short hypotheses saved to
+`memory/evaluation_findings.json`; `run_agent --use-findings` passes them to the proposer as
+untrusted evidence (sanitised and delimited like any outside text). Finding counts are exported as
+`evaluation_findings_total`. The sealed test split is not reachable from this package.
+
+Real validation result for the baseline: no underserved group, no drift, steady quality over time,
+and missed fraud differs most in the usage group (fewer distinct destinations and weaker
+international-call trends than the frauds that were caught).
+
+## Phase 13: the judge and utility score
+
+`judge/utility.py` replaces "highest validation PR-AUC wins" with a written policy, run by
+`scripts/train_models.py` (`training.selection: utility`; `pr_auc` restores the old rule):
+
+1. Hard constraint: a model that cannot explain its scores is excluded, because the API returns reasons.
+2. Utility per 10,000 accounts at the review cut-off: fraud caught x value, minus reviewed x review cost,
+   minus false alarms x friction cost. The prices are assumptions in `configs/models.yaml` (`judge:`).
+3. A paired bootstrap on identical resampled accounts gives each model's gap to the best; models whose
+   interval includes zero are tied.
+4. Among ties, the cheapest to operate is served (fastest to retrain, then smallest), unless its point
+   utility is more than 10% below the best.
+
+Real result on validation: CatBoost has the highest utility (15,968), XGBoost (15,881) and LightGBM
+(15,708) are tied with it, so XGBoost is served: it trains fastest and does not need the 270 MB CatBoost
+install in Docker. Four models were excluded for lacking explanations. The verdict, intervals and reasons
+are written to `data/processed/judge_report.md` and stored in `model_metadata.json`.
+Because fixed review capacity makes utility track recall at the cut-off, the judge's main value is the
+explicit prices, the tie handling and the operating-cost rule, not a different ranking of quality.
+
 ## Operational notes
 
 - Training the seven serving candidates takes about 6 minutes on a two-core machine (random forest

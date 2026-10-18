@@ -11,6 +11,7 @@ The test snapshots are never touched here.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 from datetime import datetime
 from pathlib import Path
@@ -73,6 +74,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--iterations", type=int, default=None, help="experiments to run (default: from config)")
     parser.add_argument("--proposer", choices=["rules", "llm"], default="rules")
+    parser.add_argument("--use-findings", action="store_true",
+                        help="give the proposer the evaluation swarm's ideas (run scripts.run_evaluation first)")
     parser.add_argument("--embedder", choices=["minilm", "hashing", "none"], default="minilm")
     args = parser.parse_args()
 
@@ -93,7 +96,12 @@ def main() -> None:
     print(f"Champion at start: {champion.key()}")
     runner.set_champion(champion)
 
-    agent = build_agent(runner, store, proposer, config, dataset_sha256, budget=budget, observer=observer)
+    findings = []
+    findings_path = PROJECT_ROOT / "memory" / "evaluation_findings.json"
+    if args.use_findings and findings_path.exists():
+        findings = json.loads(findings_path.read_text())
+        print(f"Evaluation findings given to the proposer: {len(findings)}")
+    agent = build_agent(runner, store, proposer, config, dataset_sha256, budget=budget, observer=observer, findings=findings)
     state = agent.invoke(
         {
             "iteration": 0,
