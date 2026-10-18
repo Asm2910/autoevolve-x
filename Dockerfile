@@ -12,9 +12,10 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # One source of truth for versions: use requirements.txt, but swap xgboost for its
-# CPU-only build (same module and version, without ~300 MB of GPU libraries).
+# CPU-only build (same module and version, without ~300 MB of GPU libraries) and leave
+# CatBoost out (~270 MB). CatBoost is installed below only if it is the model being served.
 COPY requirements.txt .
-RUN sed 's/^xgboost==/xgboost-cpu==/' requirements.txt > requirements.docker.txt \
+RUN sed -e 's/^xgboost==/xgboost-cpu==/' -e '/^catboost==/d' requirements.txt > requirements.docker.txt \
     && pip install --upgrade pip \
     && pip install -r requirements.docker.txt
 
@@ -23,7 +24,16 @@ RUN sed 's/^xgboost==/xgboost-cpu==/' requirements.txt > requirements.docker.txt
 COPY api ./api
 COPY observability ./observability
 COPY models/__init__.py models/explain.py ./models/
+COPY arena/__init__.py arena/estimators.py ./arena/
 COPY models/artifacts ./models/artifacts
+
+# Install the library behind the served model if it is not already in the image.
+# --no-deps skips CatBoost's plotting stack (matplotlib, plotly, graphviz), which inference never uses.
+RUN served=$(python -c "import json; print(json.load(open('models/artifacts/model_metadata.json'))['model_name'])") \
+    && echo "Served model: $served" \
+    && if [ "$served" = "catboost" ]; then \
+         pip install --no-deps "$(grep '^catboost==' requirements.txt)" six; \
+       fi
 
 RUN useradd --create-home --uid 1000 appuser
 USER appuser

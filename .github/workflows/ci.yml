@@ -25,6 +25,9 @@ jobs:
       # Data and models are git-ignored, so build them here. This takes about two minutes and
       # also proves that the whole pipeline still runs from a clean checkout.
       - name: Build the data and train the model
+        env:
+          # the small CI runner trains only the fast models; the full arena runs locally
+          AUTOEVOLVE_CANDIDATES: logistic_regression,xgboost,lightgbm
         run: python -m scripts.run_pipeline
       - run: python -m pytest -q
       - name: Keep the trained model for the Docker job

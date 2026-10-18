@@ -6,6 +6,8 @@ A telecom fraud-risk system in which **a language model proposes improvements an
 
 > The test set is sealed. The agent never sees it, and the final model is scored on it exactly once.
 
+> **Work in progress (v3).** The numbers below are from dataset v1 (seed 42). From phase 10 the project uses dataset v2 (seed 20261018, a fresh sealed test) and an 8-algorithm model arena. The results sections are refreshed in the final phase. See [docs/PROGRESS.md](docs/PROGRESS.md).
+
 ## Headline result
 
 On the sealed test snapshots the champion model reaches **PR-AUC 0.272** (95% CI 0.225 to 0.324). Logistic regression reaches 0.211, and the paired difference is **+0.061** (95% CI +0.030 to +0.094), so the gap is real. Only about 0.9% of rows are fraud, so a random scorer would reach about 0.009.
@@ -41,7 +43,8 @@ python -m scripts.run_pipeline          # generate, validate, features, split, t
 python -m ruff check .
 python -m pytest -q
 
-# 3. explain and ablate the model (optional)
+# 3. compare 8 algorithms on the validation snapshots, explain and ablate (optional)
+python -m scripts.run_arena             # logistic regression, forests, 4 boosters, isolation forest
 python -m scripts.run_ablation
 python -m scripts.explain_model
 

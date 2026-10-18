@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 
 from agents.proposers import Proposer
 from agents.spec import PARAM_BOUNDS, ExperimentSpec
+from arena.registry import names
 
 
 class LLMProposal(BaseModel):
@@ -26,21 +27,34 @@ class LLMProposal(BaseModel):
 
     stop: bool = Field(default=False, description="True only if no further experiment is worth running")
     stop_reason: str = Field(default="", description="Why you are stopping (if stop is true)")
-    model: str = Field(default="xgboost", description="xgboost or logistic_regression")
+    model: str = Field(default="xgboost", description="One of the registered models (see the prompt)")
     groups: list[str] = Field(default_factory=list, description="Feature groups to use")
     windows: list[int] = Field(default_factory=list, description="Time windows in days to use")
-    n_estimators: float | None = Field(default=None, description="xgboost: number of trees (50-600)")
-    max_depth: float | None = Field(default=None, description="xgboost: tree depth (2-8)")
-    learning_rate: float | None = Field(default=None, description="xgboost: learning rate (0.01-0.3)")
-    subsample: float | None = Field(default=None, description="xgboost: row sampling per tree (0.5-1.0)")
-    colsample_bytree: float | None = Field(default=None, description="xgboost: column sampling per tree (0.2-1.0)")
+    n_estimators: float | None = Field(default=None, description="xgboost/lightgbm/random_forest/extra_trees/isolation_forest: number of trees (50-600)")
+    max_depth: float | None = Field(default=None, description="xgboost/random_forest/extra_trees/hist_gradient_boosting: tree depth")
+    learning_rate: float | None = Field(default=None, description="boosters: learning rate (0.01-0.3)")
+    subsample: float | None = Field(default=None, description="xgboost/lightgbm: row sampling per tree (0.5-1.0)")
+    colsample_bytree: float | None = Field(default=None, description="xgboost/lightgbm: column sampling per tree (0.2-1.0)")
     min_child_weight: float | None = Field(default=None, description="xgboost: minimum child weight (1-20)")
+    num_leaves: float | None = Field(default=None, description="lightgbm: leaves per tree (4-64)")
+    min_child_samples: float | None = Field(default=None, description="lightgbm: minimum rows per leaf (5-200)")
+    iterations: float | None = Field(default=None, description="catboost: number of trees (50-600)")
+    depth: float | None = Field(default=None, description="catboost: tree depth (2-8)")
+    l2_leaf_reg: float | None = Field(default=None, description="catboost: L2 regularisation (1-20)")
+    max_iter: float | None = Field(default=None, description="hist_gradient_boosting: number of trees (50-600)")
+    l2_regularization: float | None = Field(default=None, description="hist_gradient_boosting: L2 regularisation (0-10)")
+    min_samples_leaf: float | None = Field(default=None, description="random_forest/extra_trees/hist_gradient_boosting: minimum rows per leaf")
+    max_features: float | None = Field(default=None, description="random_forest/extra_trees/isolation_forest: share of features per split (0.02-1.0)")
+    max_samples: float | None = Field(default=None, description="isolation_forest: rows per tree (64-4096)")
     C: float | None = Field(default=None, description="logistic_regression: inverse regularisation (0.001-10)")
     hypothesis: str = Field(default="", description="One sentence: what you expect and which evidence supports it")
 
 
-PARAM_FIELDS = ("n_estimators", "max_depth", "learning_rate", "subsample", "colsample_bytree",
-                "min_child_weight", "C")
+PARAM_FIELDS = (
+    "n_estimators", "max_depth", "learning_rate", "subsample", "colsample_bytree", "min_child_weight",
+    "num_leaves", "min_child_samples", "iterations", "depth", "l2_leaf_reg", "max_iter",
+    "l2_regularization", "min_samples_leaf", "max_features", "max_samples", "C",
+)
 
 SYSTEM_PROMPT = """You are the research planner for a telecom fraud-risk model.
 
@@ -54,7 +68,7 @@ see the test data, or run anything yourself.
 You may only choose from:
 - feature groups: {groups}
 - windows (days): {windows}
-- model: xgboost or logistic_regression
+- model: one of {models}
 - hyperparameter fields (leave empty to keep the champion's value), each within these bounds: {bounds}
 
 How to propose well:
@@ -75,7 +89,8 @@ class LLMProposer:
         self.structured = llm.with_structured_output(LLMProposal, method="json_schema")
         self.base_params = base_params
         self.system = SYSTEM_PROMPT.format(
-            groups=groups, windows=windows, bounds=_bounds_text(), min_gain=f"{min_gain:+.3f}"
+            groups=groups, windows=windows, models=names(), bounds=_bounds_text(),
+            min_gain=f"{min_gain:+.3f}"
         )
         self.stop_reason = ""
 

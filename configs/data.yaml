@@ -1,6 +1,6 @@
 # Data generation config (v2: hidden fraud ground truth, 12-month window, snapshots)
 data:
-  seed: 42
+  seed: 20261018
   time_range:
     start: "2025-07-01"
     end: "2026-06-30 23:59:59"

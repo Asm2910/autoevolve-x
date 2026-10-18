@@ -13,9 +13,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import yaml
-from sklearn.compose import ColumnTransformer
-from sklearn.impute import SimpleImputer
-from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (
     average_precision_score,
     f1_score,
@@ -24,8 +21,8 @@ from sklearn.metrics import (
     roc_auc_score,
 )
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
-from xgboost import XGBClassifier
+
+from arena import registry
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = PROJECT_ROOT / "configs" / "models.yaml"
@@ -59,36 +56,8 @@ def select_features(manifest: dict, groups: list[str], windows: list[int]) -> li
 
 
 def build_pipeline(name: str, params: dict, numeric: list[str], categorical: list[str], seed: int) -> Pipeline:
-    """Preprocessing and model in one artifact, so serving needs no extra code."""
-    if name == "logistic_regression":
-        preprocessor = ColumnTransformer(
-            [
-                (
-                    "numeric",
-                    Pipeline([("impute", SimpleImputer(strategy="median")), ("scale", StandardScaler())]),
-                    numeric,
-                ),
-                ("categorical", OneHotEncoder(handle_unknown="ignore"), categorical),
-            ]
-        )
-        model = LogisticRegression(random_state=seed, **params)
-    elif name == "xgboost":
-        preprocessor = ColumnTransformer(
-            [
-                ("numeric", "passthrough", numeric),
-                ("categorical", OneHotEncoder(handle_unknown="ignore", sparse_output=False), categorical),
-            ]
-        )
-        model = XGBClassifier(
-            tree_method="hist",
-            eval_metric="logloss",
-            n_jobs=-1,
-            random_state=seed,
-            **params,
-        )
-    else:
-        raise ValueError(f"Unknown model: {name}")
-    return Pipeline([("preprocess", preprocessor), ("model", model)])
+    """Preprocessing and model in one artifact. The algorithms live in arena/registry.py."""
+    return registry.build_pipeline(name, params, numeric, categorical, seed)
 
 
 def threshold_grid(config: dict) -> np.ndarray:
