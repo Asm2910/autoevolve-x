@@ -113,9 +113,13 @@ To send agent metrics to the dashboard, run `export PUSHGATEWAY_URL=http://local
 
 *Example output from a local run. Your numbers will differ slightly, because each run generates its own data.*
 
-<!-- Add Grafana screenshots once saved in docs/images/:
 ![Grafana agents dashboard](docs/images/grafana-agents.png)
-![Grafana API dashboard](docs/images/grafana-dashboard.png) -->
+
+![Mission control page](docs/images/dashboard-mission-control.png)
+
+![Ask the project page](docs/images/dashboard-ask.png)
+
+<!-- Add once saved: ![Grafana API dashboard](docs/images/grafana-dashboard.png) -->
 
 ## Repository layout
 
