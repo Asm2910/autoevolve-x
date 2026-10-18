@@ -76,7 +76,7 @@ Two safeguards surround the one language-model call. If the call fails, a rule-b
 
 ## Step 7: what the agent found
 
-Across 10 or more experiments (deeper and shallower trees, slower learning, different column sampling, different minimum child weight), **it adopted none**. Every gain was small and its interval included zero. In the live run the model chose to stop early, writing that results had plateaued at this data size.
+On dataset v1, across 10 or more experiments (deeper and shallower trees, slower learning, different column sampling, different minimum child weight), **it adopted none**. Every gain was small and its interval included zero. In the live run the model chose to stop early, writing that results had plateaued at this data size.
 
 That is a legitimate outcome and the most important result of the project. A loop that cannot say "none of these ideas are real" would have adopted luck. The widest interval spanned about 0.026 PR-AUC, which is how much noise a single experiment carries here.
 
@@ -84,11 +84,21 @@ That is a legitimate outcome and the most important result of the project. A loo
 
 `scripts.confirm_champion` looks at the test snapshots once. It refuses to run a second time for the same dataset, because a second look would turn the test set into one more thing tuned on.
 
-| Test result | PR-AUC | 95% CI |
+| Test result (dataset v1) | PR-AUC | 95% CI |
 | --- | --- | --- |
 | Champion | 0.272 | 0.225 to 0.324 |
 | Logistic regression | 0.211 | not reported |
 | Paired difference | +0.061 | +0.030 to +0.094 |
+
+**Dataset v2 (current, seed 20261018, fresh sealed test).** The model choice was made on validation only; the test table below reports every model once and was not used to choose. Telecom: 381 positives in 46,291 test rows. IEEE-CIS (real e-commerce fraud, a separate validation, not telecom data): 2,060 positives in 60,000 test rows.
+
+| Dataset | Served model | Test PR-AUC [95% CI] | Logistic regression |
+| --- | --- | --- | --- |
+| Telecom v2 | xgboost | 0.292 [0.243, 0.356] | 0.213 [0.173, 0.265] |
+| IEEE-CIS | lightgbm | 0.448 [0.425, 0.472] | 0.185 [0.173, 0.200] |
+
+On telecom v2 the top boosted and bagged models are statistically tied (random forest 0.300, extra trees 0.300, xgboost 0.292), which is why the judge chose by cost to run rather than by the highest point estimate. The paired difference against logistic regression has not been recomputed for v2.
+
 
 The interval for the difference stays above zero, so the champion beats the baseline. Note where that credit belongs: the champion is the original model, not something the agent produced.
 

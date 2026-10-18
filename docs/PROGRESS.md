@@ -208,3 +208,7 @@ Agent runs are short batch jobs, so Prometheus would miss them. Now `run_mission
 `docker compose up -d` now also starts the Pushgateway (9091) and an **MLflow server** (5000, its own volume). Prometheus scrapes the gateway with `honor_labels`. A second Grafana dashboard, **AutoEvolve-X agents**, shows time since the last run, champion PR-AUC, language-model spend and tokens, experiments by verdict, failed steps, findings by severity, step latency and calls by agent. Three alerts were added: failed steps, spend above 1.50 US dollars, no report for a week.
 
 To send training runs to the compose MLflow: `export MLFLOW_TRACKING_URI=http://localhost:5001`. Artifacts are still written by the client to the local `mlartifacts/` folder.
+
+## Phase 20: finalize
+
+README rewritten for v2 with results from dataset v2 (telecom, synthetic) and IEEE-CIS (real e-commerce fraud, kept separate), including the honest Ray result (0.93x and 0.79x, no speed-up). New `docs/ARCHITECTURE.md` with the mission graph, harness and monitoring diagrams. Overview, technical document and guide now show the v2 results and label the old ones as v1. `docs/PENDING.md` rewritten. CI gained a smoke test that runs a quick mission and a research question on freshly built data. The stale `requirements.lock.txt` was removed; versions are pinned in `requirements.txt` and `requirements-dev.txt`. Practical note: after switching git branches or unzipping over the repo, run `docker compose up -d --force-recreate`, because containers keep following the folders as they were when they started.

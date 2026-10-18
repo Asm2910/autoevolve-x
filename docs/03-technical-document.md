@@ -81,13 +81,22 @@ The final check lives in `tools/final_evaluation.py`:
 
 `scripts/confirm_champion.py` wraps this. It refuses to run a second time for the same dataset hash, and it writes the result to memory, a lesson, an MLflow experiment and a markdown report.
 
-| Result on test | PR-AUC | 95% CI |
+| Result on test (dataset v1) | PR-AUC | 95% CI |
 | --- | --- | --- |
 | Champion | 0.272 | 0.225 to 0.324 |
 | Logistic regression | 0.211 | not reported |
 | Paired difference | +0.061 | +0.030 to +0.094 |
 
 With about 0.9% positives, 0.272 is roughly 30 times what a random scorer would reach.
+**Dataset v2 (current, seed 20261018, fresh sealed test).** The model choice was made on validation only; the test table below reports every model once and was not used to choose. Telecom: 381 positives in 46,291 test rows. IEEE-CIS (real e-commerce fraud, a separate validation, not telecom data): 2,060 positives in 60,000 test rows.
+
+| Dataset | Served model | Test PR-AUC [95% CI] | Logistic regression |
+| --- | --- | --- | --- |
+| Telecom v2 | xgboost | 0.292 [0.243, 0.356] | 0.213 [0.173, 0.265] |
+| IEEE-CIS | lightgbm | 0.448 [0.425, 0.472] | 0.185 [0.173, 0.200] |
+
+On telecom v2 the top boosted and bagged models are statistically tied (random forest 0.300, extra trees 0.300, xgboost 0.292), which is why the judge chose by cost to run rather than by the highest point estimate. The paired difference against logistic regression has not been recomputed for v2.
+
 
 ## Experiment tracking with MLflow
 
@@ -241,7 +250,7 @@ The language-model proposer reads its API key from the environment. Never put a 
 | Task | Rank subscribers by fraud risk and flag those above a threshold |
 | Training data | Synthetic hidden-fraud world, five training snapshots |
 | Evaluation | PR-AUC with bootstrap intervals; threshold chosen on two validation snapshots; one sealed test on two further snapshots |
-| Test result | PR-AUC 0.272 (95% CI 0.225 to 0.324), against 0.211 for logistic regression; paired difference +0.061 (+0.030 to +0.094) |
+| Test result | Dataset v2: xgboost PR-AUC 0.292 (95% CI 0.243 to 0.356) on telecom; lightgbm 0.448 (0.425 to 0.472) on IEEE-CIS. Dataset v1: 0.272 against 0.211 for logistic regression |
 | Intended use | Demonstration of a verifiable model-improvement workflow; ranking for human review |
 | Not for | Automatic denial of service, or use on real subscribers without retraining and revalidation on real data |
 | Calibration | Scores are not calibrated probabilities; the flag `probability_calibrated` in the metadata reports this |

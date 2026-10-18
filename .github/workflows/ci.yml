@@ -30,6 +30,12 @@ jobs:
           AUTOEVOLVE_CANDIDATES: logistic_regression,xgboost,lightgbm
         run: python -m scripts.run_pipeline
       - run: python -m pytest -q
+      # A whole mission and a research question on the freshly built data: proves the agent platform
+      # still runs end to end from a clean checkout. No API key is used, so it is rule-based and free.
+      - name: Smoke-test a quick mission and the research agent
+        run: |
+          python -m scripts.run_mission --goal "CI smoke test" --depth quick
+          python -m scripts.ask "Which model is served?"
       - name: Keep the trained model for the Docker job
         uses: actions/upload-artifact@v4
         with:

@@ -2,31 +2,43 @@
 
 [![CI](https://github.com/Asm2910/autoevolve-x/actions/workflows/ci.yml/badge.svg)](https://github.com/Asm2910/autoevolve-x/actions/workflows/ci.yml)
 
-A telecom fraud-risk system in which **a language model proposes improvements and plain code decides whether to believe them**. It is reproducible, honestly evaluated, served through an API and monitored with Prometheus and Grafana.
+A fraud-risk system in which **a language model proposes and plain code decides**. A mission planner sends a team of small agents to review the data, evaluate the model, compare eight algorithms, test improvements and write down what it learned. Every claim is checked by a statistical rule, a sealed test set or a citation check, and the whole thing is reproducible, served through an API and monitored with Prometheus and Grafana.
 
-> The test set is sealed. The agent never sees it, and the final model is scored on it exactly once.
-
-> **Work in progress (v3).** The numbers below are from dataset v1 (seed 42). From phase 10 the project uses dataset v2 (seed 20261018, a fresh sealed test) and an 8-algorithm model arena. The results sections are refreshed in the final phase. See [docs/PROGRESS.md](docs/PROGRESS.md).
-
-## Headline result
-
-On the sealed test snapshots the champion model reaches **PR-AUC 0.272** (95% CI 0.225 to 0.324). Logistic regression reaches 0.211, and the paired difference is **+0.061** (95% CI +0.030 to +0.094), so the gap is real. Only about 0.9% of rows are fraud, so a random scorer would reach about 0.009.
-
-The agent ran 10 or more experiments and **adopted none**: every difference it found sat inside noise. That is a valid outcome. The lift over the baseline comes from the original model choice, not from the agent. See [Known limitations](#known-limitations).
+> The test set is sealed. Agents read only train and validation data, and models are chosen on validation.
 
 ![System architecture](docs/images/system-architecture.png)
 
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the mission graph, the agent harness and the monitoring flow.
+
+## Results
+
+Two datasets, kept apart. **Telecom** is synthetic data with a hidden ground truth, so its scores say the method works, not how it would do on real subscribers. **IEEE-CIS** is a real e-commerce fraud dataset from Kaggle, used as validation on real data. It is not telecom data and was not combined with it.
+
+| Dataset | Test rows (positives) | Served model | Test PR-AUC [95% CI] | ROC-AUC | Logistic regression PR-AUC |
+| --- | --- | --- | --- | --- | --- |
+| Telecom v2 (synthetic) | 46,291 (381) | xgboost | 0.292 [0.243, 0.356] | 0.787 | 0.213 [0.173, 0.265] |
+| IEEE-CIS (real, 300k sample, split by time) | 60,000 (2,060) | lightgbm | 0.448 [0.425, 0.472] | 0.873 | 0.185 [0.173, 0.200] |
+
+- **The judge picks by cost, not by the top number.** On telecom the best three boosted models are tied within noise, and random forest and extra trees (0.300) are statistically tied with xgboost on the test set. The judge scores models by business utility, excludes models that cannot explain a score, and among tied models serves the cheapest to run.
+- **The agent adopts changes only with evidence.** On telecom it tried window changes and rejected them all, because every interval included zero or was below it. On IEEE it adopted deeper trees (+0.018 validation PR-AUC at depth 4, interval above zero). Rejecting is a valid outcome.
+- **The evaluation swarm found a real weakness on IEEE.** Fraud among payments with no identity record is caught at about 6.5%, against 37.8% overall.
+- **Ray gave no speed-up here.** Training 7 models on a 10-core Mac took 104.6 s sequentially, 112.2 s with 2 Ray workers (0.93x) and 132.7 s with 4 (0.79x). The models are small, so process start-up and data transfer cost more than they save. Ray is kept for isolation, timeouts, retries and a path to a cluster, not for speed at this size.
+
+Older results from dataset v1 (seed 42, PR-AUC 0.272) are in [docs/v1_results](docs/v1_results).
+
 ## What it does
 
-- **Synthetic data with a hidden ground truth.** The fraud state of each subscriber is decided first, and events are generated from it, so labels are not a function of the features. It includes legitimate look-alikes (heavy callers, travellers, night workers), label noise, delayed confirmation and drifting fraud types.
-- **Leak-free features.** Nine monthly snapshots. Features use only events before the snapshot date, over 7, 30 and 90-day windows, plus trend features. 254 features in five groups: customer, usage, recharge, network, risk.
-- **Temporal evaluation.** The first 5 snapshots train, the next 2 choose thresholds and drive the agent, and the last 2 are scored once. Scores carry bootstrap 95% confidence intervals, and model comparisons are paired.
-- **A self-improving agent.** A LangGraph loop recalls past lessons, proposes one experiment (Claude, or a rule-based fallback), checks it is new, runs it, and adopts it only if its confidence interval lower bound is above zero and the gain is at least 0.01.
-- **Memory.** SQLite is the source of truth, with FTS5 keyword search and a ChromaDB vector index, merged by reciprocal rank fusion.
-- **Drift monitoring.** Label-free PSI and KS checks on features, with a simulator to rehearse drift.
-- **Serving and monitoring.** A FastAPI service with request IDs, JSON logs and explanations, scraped by Prometheus and shown in a provisioned Grafana dashboard, with five alert rules.
-- **Review dashboard.** A Streamlit page that shows the experiment ledger, the final test, feature importance and drift.
-- **CI.** GitHub Actions runs ruff, pytest and a Docker build with a health check.
+- **Mission planner.** Rule-based, with three depths (quick, standard, thorough). It re-plans after the data review and the evaluation. It does not read the goal text.
+- **Data swarm.** Schema, quality, relationship and feature agents. Feature screening uses Benjamini-Hochberg false discovery control, an effect-size floor and a leakage check.
+- **Evaluation swarm.** Performance, segment, error and drift agents. Segment findings use Bonferroni-corrected bootstrap and merge groups that cover identical accounts.
+- **Model arena and judge.** Eight algorithms behind one registry, run sequentially or on Ray. The judge uses utility per 10,000 accounts, a paired bootstrap and an explainability rule.
+- **Improvement agent.** A LangGraph loop that proposes one experiment (Claude, or a rule-based fallback), checks it is new, runs it, and adopts it only if the paired bootstrap lower bound is above zero and the gain is at least 0.01 PR-AUC.
+- **Reflection and memory.** Grounded lessons are written to memory (SQLite, FTS5 keyword search, ChromaDB vectors, merged by reciprocal rank fusion) and recalled by later missions.
+- **Research agent.** Answers questions from the project's own README, docs, reports and memory, with sources. With a model, citations and numbers are checked in code.
+- **Guardrails and harness.** Budgets, a kill switch, contracts with timeouts and retries, untrusted-text handling, JSONL traces and Prometheus agent metrics.
+- **Control panel.** A Streamlit dashboard with the review page, mission control (start, watch, stop) and an ask page.
+- **Serving and monitoring.** A FastAPI service with request IDs, JSON logs and explanations; Prometheus, a Pushgateway, MLflow and two provisioned Grafana dashboards (API and agents); drift checks with PSI and KS.
+- **CI.** GitHub Actions runs ruff, pytest, a quick mission and a research question on freshly built data, and a Docker build with a health check.
 
 ## Quick start
 
@@ -43,7 +55,7 @@ python -m scripts.run_pipeline          # generate, validate, features, split, t
 python -m ruff check .
 python -m pytest -q
 
-# 3. compare 8 algorithms on the validation snapshots, explain and ablate (optional)
+# 3. compare 8 algorithms on the validation snapshots; the judge picks the served model; explain and ablate (optional)
 python -m scripts.run_arena             # logistic regression, forests, 4 boosters, isolation forest
 python -m scripts.run_arena --workers 4   # same comparison, four models at a time on Ray (pip install ray)
 python -m scripts.benchmark_ray           # speed-up of 1, 2 and 4 workers
@@ -53,6 +65,7 @@ python -m scripts.explain_model
 # 4. fill the memory and run the agent
 python -m scripts.memory_cli ingest
 python -m scripts.run_mission --depth quick                 # plan, review, evaluate, improve, reflect in one graph
+python -m scripts.ask "Why is xgboost the served model?"    # answers from the docs, reports and memory, with sources
 python -m scripts.run_data_review                           # four data agents check the sources and features
 python -m scripts.run_evaluation                            # four evaluation agents report on the model
 python -m scripts.run_agent --iterations 4                  # rule-based, no API key needed
@@ -86,9 +99,13 @@ python -m scripts.generate_traffic --count 300 --rate 10 --shift usage:1.6   # r
 | --- | --- |
 | API and interactive docs | http://localhost:8000 and http://localhost:8000/docs |
 | Prometheus (targets, alerts) | http://localhost:9090 |
-| Grafana (provisioned dashboard) | http://localhost:3000 |
+| Grafana (API and agents dashboards) | http://localhost:3000 |
+| Pushgateway (agent metrics) | http://localhost:9091 |
+| MLflow | http://localhost:5001 |
 
 Use `python -m streamlit`, not a bare `streamlit`, so the virtual environment is used. Trained models must exist in `models/artifacts/` before the Docker build.
+
+To send agent metrics to the dashboard, run `export PUSHGATEWAY_URL=http://localhost:9091` before a mission. After switching git branches or unzipping over the repository, run `docker compose up -d --force-recreate`, because Docker keeps pointing at the folders as they were when a container started.
 
 ## Dashboard
 
@@ -96,8 +113,9 @@ Use `python -m streamlit`, not a bare `streamlit`, so the virtual environment is
 
 *Example output from a local run. Your numbers will differ slightly, because each run generates its own data.*
 
-<!-- Add a Grafana screenshot here once your stack is running:
-![Grafana dashboard](docs/images/grafana-dashboard.png) -->
+<!-- Add Grafana screenshots once saved in docs/images/:
+![Grafana agents dashboard](docs/images/grafana-agents.png)
+![Grafana API dashboard](docs/images/grafana-dashboard.png) -->
 
 ## Repository layout
 
@@ -106,12 +124,18 @@ configs/               data and model settings
 data_generation/       hidden world, behaviour profiles, event generators, snapshots, validation
 feature_engineering/   windowed feature builder and its validation
 models/                training, evaluation, explanations, MLflow tracking, artifacts
-agents/                LangGraph agent, proposers, decision rule, experiment spec
+agentkit/              harness, budget, guardrails, tracing, context builder
+agents/                LangGraph improvement loop, proposers, decision rule
+swarm/                 data swarm and evaluation swarm
+arena/ judge/          eight algorithms, executors (sequential, Ray), utility judge
+mission/               planner, mission graph, reflection, report
+research/              local retrieval and the grounded research agent
+data_adapters/         IEEE-CIS adapter (real e-commerce fraud)
 memory/                SQLite store, ChromaDB index, embedders
 tools/                 experiment runner, final evaluation
 monitoring/            drift checks (PSI, KS)
-observability/         JSON logging, Prometheus metrics and alerts, Grafana provisioning
-dashboard/             Streamlit review page
+observability/         JSON logging, Prometheus metrics, Pushgateway push, alerts, Grafana provisioning
+dashboard/             Streamlit review page, mission control, ask page
 api/                   FastAPI service
 scripts/               runnable steps: pipeline, agent, drift, traffic, memory CLI
 tests/                 unit and API tests
@@ -125,6 +149,8 @@ Generated data (`data/`) and the trained model (`models/artifacts/`) are git-ign
 
 | Document | What it is |
 | --- | --- |
+| [Architecture](docs/ARCHITECTURE.md) | The mission graph, the harness, who decides what, monitoring |
+| [Progress log](docs/PROGRESS.md) | What each phase added and measured |
 | [Overview](docs/01-overview.md) | One page: the idea, the result and the limits |
 | [Design document](docs/02-design-document.md) | Why it is built this way, with trade-offs and risks |
 | [Technical document](docs/03-technical-document.md) | Modules, metrics, alerts, commands, model card and runbook |
@@ -141,27 +167,19 @@ The API key for the language-model proposer comes from the environment. Copy `.e
 
 ## Known limitations
 
-- **The data is synthetic.** Absolute scores say nothing about real telecom fraud. The point is the method.
-- **The agent adopted nothing.** Its experiments all fell inside noise, so the champion is the original model. The value of the agent is that it can say so with evidence.
+- **The telecom data is synthetic.** Absolute scores say nothing about real telecom fraud. IEEE-CIS is real but is e-commerce fraud, one dataset, sampled to 300,000 rows.
+- **The planner does not read the goal.** It picks steps from the depth. The goal is recorded in the report.
+- **The injection filter is pattern-based.** It is one layer of defence, not a guarantee.
+- **Ray gave no speed-up** at this model size (see Results).
+- **Docker is only partly tested.** The images build in CI, but the compose stack and the CatBoost-served path were checked by hand only.
 - **Probabilities are not calibrated.** Use scores for ranking and the validation-chosen threshold.
-- **Drift detection only recommends.** A drift verdict suggests re-running the agent on fresh data. There is no ingestion step, so nothing retrains by itself.
+- **Drift detection only recommends.** Nothing retrains by itself.
 - **No alert delivery.** Alerts show in Prometheus and Grafana, but no Alertmanager sends notifications.
+- **The agents dashboard shows the last run of each script**, not a history.
 - **The API has no authentication.** Put it behind a gateway before real use.
 
-## Roadmap
-
-1. Run the pipeline on a real public fraud dataset.
-2. Add probability calibration.
-3. Correct for multiple comparisons across agent experiments.
-4. Add Alertmanager.
-5. Add data ingestion so drift can trigger a retrain.
+What is still open is listed in [docs/PENDING.md](docs/PENDING.md).
 
 ## License
 
 MIT. See [LICENSE](LICENSE).
-
-**Ask the project:** `python -m scripts.ask "your question" [--llm]` answers from the docs, reports and memory with sources (see docs/PROGRESS.md, Phase 17).
-
-**Mission control:** the dashboard has a Mission control page (start, watch and stop a mission) and an Ask the project page; see docs/PROGRESS.md, Phase 18.
-
-**Agent monitoring:** `docker compose up -d`, then `export PUSHGATEWAY_URL=http://localhost:9091` before a mission. Grafana (localhost:3000) has an "AutoEvolve-X agents" dashboard; MLflow is at localhost:5001. See docs/PROGRESS.md, Phase 19.

@@ -2,6 +2,8 @@
 
 | Read this | When |
 | --- | --- |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | You want the mission graph, the agent harness and who decides what |
+| [PROGRESS.md](PROGRESS.md) | You want what each phase added and measured |
 | [01-overview.md](01-overview.md) | You have two minutes and want the idea, the result and the limits |
 | [02-design-document.md](02-design-document.md) | You want to know why it is built this way |
 | [03-technical-document.md](03-technical-document.md) | You want to run, operate or extend it; includes the model card, runbook and documentation checklist |
