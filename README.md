@@ -45,6 +45,8 @@ python -m pytest -q
 
 # 3. compare 8 algorithms on the validation snapshots, explain and ablate (optional)
 python -m scripts.run_arena             # logistic regression, forests, 4 boosters, isolation forest
+python -m scripts.run_arena --workers 4   # same comparison, four models at a time on Ray (pip install ray)
+python -m scripts.benchmark_ray           # speed-up of 1, 2 and 4 workers
 python -m scripts.run_ablation
 python -m scripts.explain_model
 
@@ -52,6 +54,7 @@ python -m scripts.explain_model
 python -m scripts.memory_cli ingest
 python -m scripts.run_agent --iterations 4                  # rule-based, no API key needed
 python -m scripts.run_agent --iterations 4 --proposer llm   # Claude proposes, needs ANTHROPIC_API_KEY
+touch memory/STOP                                           # from another terminal: stop a running agent
 
 # 5. the evidence
 python -m scripts.confirm_champion       # sealed test, runs once per dataset

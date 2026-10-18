@@ -17,15 +17,19 @@ from __future__ import annotations
 
 import operator
 from collections.abc import Callable
+from functools import wraps
 from typing import Annotated, TypedDict
 
 from langgraph.graph import END, StateGraph
 
+from agentkit.budget import Budget, BudgetExceeded, KillSwitchTripped
+from agentkit.tracing import Observer
 from agents.decision import decide
 from agents.proposers import Proposer
 from agents.spec import ExperimentSpec
 from memory.store import MemoryStore
 from models import tracking
+from observability import agent_metrics
 from tools.experiment_runner import ExperimentRunner
 
 MAX_RETRIES = 3
@@ -68,7 +72,11 @@ def build_agent(
     config: dict,
     dataset_sha256: str,
     log: Callable[[str], None] = print,
+    budget: Budget | None = None,
+    observer: Observer | None = None,
 ):
+    budget = budget or Budget.unlimited()
+    observer = observer or Observer()
     allowed_groups = list(config["features"]["groups"])
     allowed_windows = list(config["features"]["windows"])
     min_gain = float(config["agent"]["min_gain"])
@@ -90,6 +98,11 @@ def build_agent(
         return rows
 
     def recall(state: AgentState) -> dict:
+        try:
+            budget.check()
+        except (BudgetExceeded, KillSwitchTripped) as exc:
+            log(f"  stopping: {exc}")
+            return {"stop_reason": f"stopped: {exc}"}
         context = {
             "tried_keys": tried_keys(),
             "tried": tried_summaries(),
@@ -113,6 +126,9 @@ def build_agent(
         retries = state.get("retries", 0) + 1
         try:
             spec = proposer.propose(champion, state["context"])
+        except (BudgetExceeded, KillSwitchTripped) as exc:
+            log(f"  stopping: {exc}")
+            return {"spec": None, "spec_error": "", "stop_reason": f"stopped: {exc}"}
         except Exception as exc:  # noqa: BLE001 - a bad proposal must not crash the loop
             message = f"proposer failed: {exc}"
             log(f"  {message}")
@@ -176,7 +192,10 @@ def build_agent(
             conclusion=reason,
             dataset_sha256=dataset_sha256,
         )
+        budget.charge_experiment()
+        agent_metrics.EXPERIMENTS.labels(verdict).inc()
         if verdict == "adopt":
+            agent_metrics.BEST_PR_AUC.set(result["val_pr_auc"])
             store.add_lesson(f"Adopted: {spec.hypothesis}. {reason}", experiment_id=exp_id, tags="agent adopt")
         elif result["diff_ci"][1] < 0:
             store.add_lesson(f"Does not help: {spec.hypothesis}. {reason}", experiment_id=exp_id, tags="agent worse")
@@ -197,15 +216,33 @@ def build_agent(
     def route_after_record(state: AgentState) -> str:
         return END if state["iteration"] >= state["max_iterations"] else "recall"
 
+    def route_after_recall(state: AgentState) -> str:
+        return END if state.get("stop_reason") else "propose"
+
+    def observed(name: str, fn):
+        @wraps(fn)
+        def wrapper(state: AgentState) -> dict:
+            with observer.step(f"agent.{name}", iteration=state.get("iteration", 0)) as outcome:
+                update = fn(state)
+                if name == "decide":
+                    outcome["verdict"] = update.get("verdict")
+                if name == "propose" and update.get("spec"):
+                    outcome["hypothesis"] = update["spec"]["hypothesis"][:120]
+                if update.get("stop_reason"):
+                    outcome["stop_reason"] = update["stop_reason"][:160]
+                return update
+
+        return wrapper
+
     graph = StateGraph(AgentState)
-    graph.add_node("recall", recall)
-    graph.add_node("propose", propose)
-    graph.add_node("novelty", novelty)
-    graph.add_node("run", run)
-    graph.add_node("decide", decide_node)
-    graph.add_node("record", record)
+    graph.add_node("recall", observed("recall", recall))
+    graph.add_node("propose", observed("propose", propose))
+    graph.add_node("novelty", observed("novelty", novelty))
+    graph.add_node("run", observed("run", run))
+    graph.add_node("decide", observed("decide", decide_node))
+    graph.add_node("record", observed("record", record))
     graph.set_entry_point("recall")
-    graph.add_edge("recall", "propose")
+    graph.add_conditional_edges("recall", route_after_recall, {"propose": "propose", END: END})
     graph.add_conditional_edges("propose", route_after_propose, {"propose": "propose", "novelty": "novelty", END: END})
     graph.add_conditional_edges("novelty", route_after_novelty, {"propose": "propose", "run": "run", END: END})
     graph.add_edge("run", "decide")

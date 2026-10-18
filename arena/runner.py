@@ -19,6 +19,7 @@ import joblib
 import numpy as np
 import pandas as pd
 from sklearn.metrics import average_precision_score, roc_auc_score
+from threadpoolctl import threadpool_limits
 
 from arena.registry import build_pipeline, get_family
 from models.training import interval, top_fraction_stats
@@ -33,6 +34,17 @@ class ArenaTask:
     numeric: list[str]
     categorical: list[str]
     seed: int
+    threads: int = -1  # CPU threads this model may use; -1 = all
+
+
+@dataclass(frozen=True)
+class ArenaData:
+    """The only data the arena sees: training and validation. The sealed test set is not here."""
+
+    train_x: pd.DataFrame
+    train_y: np.ndarray
+    val_x: pd.DataFrame
+    val_y: np.ndarray
 
 
 @dataclass
@@ -68,14 +80,18 @@ def train_candidate(
 ) -> ArenaResult:
     """Fit one model and score it on validation. Never raises: a failure becomes a result."""
     try:
-        pipeline = build_pipeline(task.model, task.params, task.numeric, task.categorical, task.seed)
-        started = time.perf_counter()
-        pipeline.fit(train_x, train_y)
-        train_seconds = time.perf_counter() - started
+        pipeline = build_pipeline(
+            task.model, task.params, task.numeric, task.categorical, task.seed, task.threads
+        )
+        limit = task.threads if task.threads > 0 else None  # also caps OpenMP/BLAS pools
+        with threadpool_limits(limits=limit):
+            started = time.perf_counter()
+            pipeline.fit(train_x, train_y)
+            train_seconds = time.perf_counter() - started
 
-        started = time.perf_counter()
-        probs = pipeline.predict_proba(val_x)[:, 1]
-        predict_seconds = time.perf_counter() - started
+            started = time.perf_counter()
+            probs = pipeline.predict_proba(val_x)[:, 1]
+            predict_seconds = time.perf_counter() - started
 
         buffer = io.BytesIO()
         joblib.dump(pipeline, buffer)
@@ -101,23 +117,23 @@ def train_candidate(
 
 def run_arena(
     tasks: list[ArenaTask],
-    train_x: pd.DataFrame,
-    train_y: np.ndarray,
-    val_x: pd.DataFrame,
-    val_y: np.ndarray,
+    data: ArenaData,
     review_fraction: float,
+    executor=None,
     log: Callable[[str], None] = print,
 ) -> list[ArenaResult]:
-    results = []
-    for task in tasks:
-        result = train_candidate(task, train_x, train_y, val_x, val_y, review_fraction)
-        if result.ok:
-            log(f"  {task.model:<24} PR-AUC {result.metrics['pr_auc']:.3f}  "
-                f"train {result.train_seconds:6.1f}s  size {result.size_mb:7.1f} MB")
-        else:
-            log(f"  {task.model:<24} FAILED: {result.error}")
-        results.append(result)
-    return results
+    """Train every task with the given executor (sequential by default, Ray for parallel)."""
+    from arena.executor import SequentialExecutor
+
+    executor = executor or SequentialExecutor()
+    return executor.run(tasks, data, review_fraction, log)
+
+
+def describe(result: ArenaResult) -> str:
+    if not result.ok:
+        return f"  {result.model:<24} FAILED: {result.error}"
+    return (f"  {result.model:<24} PR-AUC {result.metrics['pr_auc']:.3f}  "
+            f"train {result.train_seconds:6.1f}s  size {result.size_mb:7.1f} MB")
 
 
 def paired_pr_auc_draws(

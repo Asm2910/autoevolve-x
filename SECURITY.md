@@ -25,6 +25,17 @@ git log --all -p -S "sk-ant" --oneline | head
 
 If step 3 prints anything, treat that key as leaked: revoke it in the Anthropic Console, create a new one, and remove the commit from history before pushing.
 
+## Agent safety (guardrails)
+
+The language model proposes; ordinary code validates, runs and decides. On top of that structure there are explicit limits, all in `agentkit/` and tested in `tests/agent_evals/`:
+
+- **Budgets.** Each run has hard limits on language-model calls, tokens, estimated cost, wall-clock time and experiments (`agent_platform` in `configs/models.yaml`). The loop stops with a stated reason, and the fallback proposer does not hide a limit by switching to rules. The cost figure uses assumed prices, so set them to your plan's rates.
+- **Kill switch.** `touch memory/STOP` stops a running agent before its next step. Delete the file to run again.
+- **Sealed test data.** Agents read data only through `agentkit/data_access.py`, which refuses the test split. A test also scans the agent code to confirm nothing reads the test file directly.
+- **Untrusted text.** Lessons, history and refusal messages are sanitised (control characters removed, length capped, angle brackets escaped), wrapped in `<untrusted_data>` tags, and anything that reads like an instruction to the model is replaced by a placeholder. This reduces risk but is not a guarantee. The real protection is that the model can only return an experiment spec, which is checked against allow-lists and bounds, and adoption is decided by a fixed statistical rule.
+- **Traces.** Every agent step is written to `memory/traces/*.jsonl` with its duration, outcome and prompt version, so a run can be audited.
+- **Not covered.** These controls do not protect the API key if you paste it somewhere, do not authenticate the prediction API, and cannot stop a human from running code that reads the test file.
+
 ## Other things worth knowing
 
 - **Grafana.** The compose file allows anonymous viewing and uses `admin` for editing, with the password `admin` unless `GRAFANA_ADMIN_PASSWORD` is set. This is fine on a laptop. Set a real password before exposing port 3000 to any network.

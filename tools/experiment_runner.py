@@ -11,9 +11,9 @@ from __future__ import annotations
 import json
 
 import numpy as np
-import pandas as pd
 from sklearn.metrics import average_precision_score
 
+from agentkit.data_access import load_split
 from agents.spec import ExperimentSpec
 from models.training import (
     LABEL,
@@ -30,8 +30,8 @@ class ExperimentRunner:
         self.seed = config["training"]["seed"]
         self.n_boot = bootstrap_samples or config["agent"]["bootstrap_samples"]
         self.manifest = json.loads((PROCESSED_DIR / "feature_manifest.json").read_text())
-        self.train = pd.read_parquet(PROCESSED_DIR / "train.parquet")
-        self.validation = pd.read_parquet(PROCESSED_DIR / "validation.parquet")
+        self.train = load_split("train", PROCESSED_DIR)
+        self.validation = load_split("validation", PROCESSED_DIR)
         self.y_val = self.validation[LABEL].to_numpy()
         self.champion: ExperimentSpec | None = None
         self.champion_probs: np.ndarray | None = None

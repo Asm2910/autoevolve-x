@@ -12,9 +12,18 @@ import json
 
 from pydantic import BaseModel, Field
 
+from agentkit.budget import Budget, BudgetExceeded, KillSwitchTripped
+from agentkit.context import ContextBuilder, ContextPolicy, compact_history, versioned_prompt
+from agentkit.guardrails import UNTRUSTED_NOTICE, clean_model_text, wrap_untrusted
+from agentkit.llm import UsageTracker
+from agentkit.tracing import Observer
 from agents.proposers import Proposer
 from agents.spec import PARAM_BOUNDS, ExperimentSpec
 from arena.registry import names
+from observability import agent_metrics as metrics
+
+# the only context this agent may see; everything else the graph holds stays out of the prompt
+PROPOSER_POLICY = ContextPolicy("llm_proposer", frozenset({"lessons", "tried", "rejections"}))
 
 
 class LLMProposal(BaseModel):
@@ -84,46 +93,82 @@ def _bounds_text() -> str:
 
 
 class LLMProposer:
-    def __init__(self, llm, base_params: dict, groups: list[str], windows: list[int], min_gain: float) -> None:
+    def __init__(
+        self,
+        llm,
+        base_params: dict,
+        groups: list[str],
+        windows: list[int],
+        min_gain: float,
+        budget: Budget | None = None,
+        observer: Observer | None = None,
+        max_context_tokens: int = 6000,
+    ) -> None:
         """`llm` is any chat model with .with_structured_output(), e.g. ChatAnthropic."""
         self.structured = llm.with_structured_output(LLMProposal, method="json_schema")
         self.base_params = base_params
-        self.system = SYSTEM_PROMPT.format(
-            groups=groups, windows=windows, models=names(), bounds=_bounds_text(),
-            min_gain=f"{min_gain:+.3f}"
+        self.budget = budget or Budget.unlimited()
+        self.observer = observer or Observer()
+        self.max_context_tokens = max_context_tokens
+        self.usage = UsageTracker()
+        self.prompt = versioned_prompt(
+            "llm_proposer.system",
+            SYSTEM_PROMPT.format(
+                groups=groups, windows=windows, models=names(), bounds=_bounds_text(),
+                min_gain=f"{min_gain:+.3f}",
+            ) + "\n\n" + UNTRUSTED_NOTICE,
         )
+        self.system = self.prompt.text
         self.stop_reason = ""
+        self.flagged_inputs = 0
 
     def _evidence(self, champion: ExperimentSpec, context: dict) -> str:
-        lessons = [f"- {text}" for text in context.get("lessons", [])] or ["- none yet"]
-        tried = [
-            f"- [{t['verdict']}] {t['hypothesis']} -> {t['result']}" for t in context.get("tried", [])
-        ] or ["- nothing yet"]
+        context = PROPOSER_POLICY.apply(context)
+        recent, earlier = compact_history(context.get("tried", []), keep_recent=8)
+        tried_lines = [f"[{t['verdict']}] {t['hypothesis']} -> {t['result']}" for t in recent]
+        lessons, lesson_flags = wrap_untrusted("lessons", list(context.get("lessons", [])))
+        tried, tried_flags = wrap_untrusted("already_tried", tried_lines)
+        flags = lesson_flags + tried_flags
         champion_json = json.dumps(
             {**champion.identity(), "resolved_params": champion.resolved_params(self.base_params)}
         )
-        parts = [
-            "Current champion:",
-            champion_json,
-            "",
-            "Lessons learned so far (verified results):",
-            *lessons,
-            "",
-            "Already tried on this dataset (do not repeat):",
-            *tried,
-        ]
+
+        builder = ContextBuilder(self.max_context_tokens)
+        builder.add("champion", f"Current champion:\n{champion_json}", required=True)
+        builder.add("lessons", "Lessons learned so far (verified results):\n" + lessons, priority=3)
+        tried_text = "Already tried on this dataset (do not repeat):\n" + tried
+        if earlier:
+            tried_text += f"\n{earlier}"
+        builder.add("tried", tried_text, priority=1)
         if context.get("rejections"):
-            parts += ["", "Your earlier proposals this round were refused:"]
-            parts += [f"- {reason}" for reason in context["rejections"]]
-        parts += ["", "Propose the next experiment."]
-        return "\n".join(parts)
+            rejections, rejection_flags = wrap_untrusted("refused_proposals", list(context["rejections"]))
+            flags += rejection_flags
+            builder.add("rejections", "Your earlier proposals this round were refused:\n" + rejections, required=True)
+        builder.add("ask", "Propose the next experiment.", required=True)
+        if flags:
+            self.flagged_inputs += len(flags)
+            self.observer.trace.record(event="untrusted_input_flagged", count=len(flags), agent="llm_proposer")
+        return builder.build().text
 
     def propose(self, champion: ExperimentSpec, context: dict) -> ExperimentSpec | None:
-        proposal: LLMProposal = self.structured.invoke(
-            [("system", self.system), ("human", self._evidence(champion, context))]
-        )
+        self.budget.check()
+        with self.observer.step("llm_proposer", kind="llm", prompt=self.prompt.id) as outcome:
+            proposal: LLMProposal = self.structured.invoke(
+                [("system", self.system), ("human", self._evidence(champion, context))],
+                config={"callbacks": [self.usage]},
+            )
+            tokens_in, tokens_out = self.usage.take()
+            self.budget.charge_llm(tokens_in, tokens_out)
+            metrics.LLM_REQUESTS.labels("llm_proposer", self.usage.model_name or "unknown").inc()
+            metrics.LLM_TOKENS.labels("llm_proposer", "input").inc(tokens_in)
+            metrics.LLM_TOKENS.labels("llm_proposer", "output").inc(tokens_out)
+            metrics.LLM_COST.labels("llm_proposer").inc(
+                (tokens_in * self.budget.input_usd_per_million + tokens_out * self.budget.output_usd_per_million) / 1e6
+            )
+            outcome.update(input_tokens=tokens_in, output_tokens=tokens_out, stop=proposal.stop)
         if proposal.stop:
-            self.stop_reason = f"the language model chose to stop: {proposal.stop_reason or 'no reason given'}"
+            reason = clean_model_text(proposal.stop_reason or "no reason given")
+            self.stop_reason = f"the language model chose to stop: {reason}"
             return None
         self.stop_reason = ""
         params = {name: getattr(proposal, name) for name in PARAM_FIELDS if getattr(proposal, name) is not None}
@@ -133,7 +178,7 @@ class LLMProposer:
             groups=proposal.groups,
             windows=proposal.windows,
             params=params,
-            hypothesis=proposal.hypothesis,
+            hypothesis=clean_model_text(proposal.hypothesis),
         )
 
 
@@ -151,6 +196,8 @@ class FallbackProposer:
             spec = self.primary.propose(champion, context)
             self.stop_reason = getattr(self.primary, "stop_reason", "")
             return spec
+        except (BudgetExceeded, KillSwitchTripped):
+            raise  # a limit is a stop, not a reason to quietly switch proposers
         except Exception as exc:  # noqa: BLE001 - any failure of the model falls back to rules
             self.log(f"  primary proposer failed ({type(exc).__name__}: {str(exc)[:120]}); using the backup")
             self.stop_reason = ""
