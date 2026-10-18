@@ -163,3 +163,5 @@ MIT. See [LICENSE](LICENSE).
 **Ask the project:** `python -m scripts.ask "your question" [--llm]` answers from the docs, reports and memory with sources (see docs/PROGRESS.md, Phase 17).
 
 **Mission control:** the dashboard has a Mission control page (start, watch and stop a mission) and an Ask the project page; see docs/PROGRESS.md, Phase 18.
+
+**Agent monitoring:** `docker compose up -d`, then `export PUSHGATEWAY_URL=http://localhost:9091` before a mission. Grafana (localhost:3000) has an "AutoEvolve-X agents" dashboard; MLflow is at localhost:5001. See docs/PROGRESS.md, Phase 19.

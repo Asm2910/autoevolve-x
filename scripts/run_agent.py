@@ -24,6 +24,7 @@ from memory.embedding import get_embedder
 from memory.store import MemoryStore
 from memory.vector import VectorIndex
 from models.training import PROCESSED_DIR, PROJECT_ROOT, load_config
+from observability.push import push_at_exit
 from scripts.train_models import file_sha256
 from tools.experiment_runner import ExperimentRunner
 
@@ -78,6 +79,7 @@ def main() -> None:
                         help="give the proposer the evaluation and data swarms' ideas (run scripts.run_evaluation / run_data_review first)")
     parser.add_argument("--embedder", choices=["minilm", "hashing", "none"], default="minilm")
     args = parser.parse_args()
+    push_at_exit("run_agent")
 
     config = load_config()
     max_iterations = args.iterations or int(config["agent"]["max_iterations"])

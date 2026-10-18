@@ -200,3 +200,11 @@ Limits: the planner does not read the goal text beyond logging it; depth and the
 ## Phase 18: mission control in the browser
 
 `python -m streamlit run dashboard/app.py` now has two extra pages in the sidebar. **Mission control**: enter a goal, pick dataset (telecom or ieee) and depth, preview the plan, start the mission, watch the live log, stop it, and read the latest report. The mission runs as a separate process (`scripts.run_mission`), so closing the tab does not kill it; the same budget and kill switch (`memory/STOP`) apply. Only one mission runs at a time. **Ask the project**: the research agent from Phase 17. The planner still chooses steps from the depth, not from the goal text.
+
+## Phase 19: observability v2
+
+Agent runs are short batch jobs, so Prometheus would miss them. Now `run_mission`, `run_agent`, `run_data_review` and `run_evaluation` push their final metrics to a **Pushgateway** when they finish (`observability/push.py`). It is off unless `PUSHGATEWAY_URL` (or `agent_platform.pushgateway_url`) is set, and a gateway failure never fails a run. Each (dataset, script) pair is its own group, so the dashboard shows the **last run** of each script, not a history; history lives in the JSONL traces and the experiment memory.
+
+`docker compose up -d` now also starts the Pushgateway (9091) and an **MLflow server** (5000, its own volume). Prometheus scrapes the gateway with `honor_labels`. A second Grafana dashboard, **AutoEvolve-X agents**, shows time since the last run, champion PR-AUC, language-model spend and tokens, experiments by verdict, failed steps, findings by severity, step latency and calls by agent. Three alerts were added: failed steps, spend above 1.50 US dollars, no report for a week.
+
+To send training runs to the compose MLflow: `export MLFLOW_TRACKING_URI=http://localhost:5001`. Artifacts are still written by the client to the local `mlartifacts/` folder.
