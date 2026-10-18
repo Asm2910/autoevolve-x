@@ -196,3 +196,7 @@ Limits: the planner does not read the goal text beyond logging it; depth and the
 ## Phase 17: the research agent (local RAG)
 
 `python -m scripts.ask "Why is xgboost the served model?"` answers from the project's own README, docs, reports and memory (lessons, experiments), with sources. Retrieval is BM25 (optionally fused with embeddings). Without `--llm` it returns the closest passages. With `--llm` a model writes a short answer from numbered passages and code checks it: citations must exist, numbers must appear in the cited passages (else flagged), no citation means the answer is withheld, nothing retrieved means "I could not find this". Passages and questions are sanitised as untrusted text. Also fixed: a multi-round mission report now shows the first round's starting PR-AUC.
+
+## Phase 18: mission control in the browser
+
+`python -m streamlit run dashboard/app.py` now has two extra pages in the sidebar. **Mission control**: enter a goal, pick dataset (telecom or ieee) and depth, preview the plan, start the mission, watch the live log, stop it, and read the latest report. The mission runs as a separate process (`scripts.run_mission`), so closing the tab does not kill it; the same budget and kill switch (`memory/STOP`) apply. Only one mission runs at a time. **Ask the project**: the research agent from Phase 17. The planner still chooses steps from the depth, not from the goal text.
