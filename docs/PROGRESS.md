@@ -136,6 +136,36 @@ Real result on the telecom data: schemas and quality are clean. One real finding
 have any risk event, so the risk group partly encodes "has a risk record". Usage is the strongest
 group (57 of 63 features carry signal), then risk, recharge, network, and customer last (1 of 8).
 
+## Phase 15: real data (IEEE-CIS)
+
+The same pipeline now runs on real e-commerce card fraud: IEEE-CIS (Vesta, via Kaggle), 590,540 payments,
+3.5% fraud, 183 days, two linked sources (payments and device/identity, joined on TransactionID; identity exists
+for 24% of payments). Only the two labelled *train* files are used, and the project makes its own temporal split
+(earliest 60% of time trains, next 20% tunes, last 20% is the sealed test). Public multi-source *telecom* fraud
+data does not exist, so this is validation on real fraud data, not a replacement for the telecom work.
+
+- `data_adapters/ieee_cis.py`: reads the Kaggle zip or folder, builds 440 features in 11 groups using the
+  project's `<group>__<metric>` naming (transaction, card, address, email, counts, timedeltas, match, vesta,
+  identity, device) plus a `history` group made from each card's earlier payments only (count so far, amount
+  against the card's own average, seconds since its previous payment), so nothing from the future leaks.
+  Rare categories are collapsed using training rows only.
+- `datasets.py`: `AUTOEVOLVE_DATASET=ieee` switches every script to its own processed folder, configuration
+  (`configs/ieee.yaml`), model folder and agent memory. The telecom data and the served model are never touched.
+- `scripts/prepare_ieee.py`: one command from the Kaggle zip to the processed files (default 300,000 rows
+  spread evenly over time; `--sample 0` keeps all).
+- Data swarm: `ieee_specs()` plus a summary for sparse columns, so 282 mostly-empty columns become one finding.
+- Evaluation swarm: shows only the largest segment shortfalls and summarises the rest.
+
+Real results (300,000-row sample, validation / sealed test):
+- Validation PR-AUC: LightGBM 0.558, XGBoost 0.550, logistic regression 0.466 (ROC-AUC about 0.90).
+- Sealed test PR-AUC (a later period): LightGBM 0.448, XGBoost 0.431. Performance falls in the later period, which the
+  telecom data also showed; fraud patterns change over time.
+- The judge serves XGBoost (tied with LightGBM within noise, cheaper to train).
+- Evaluation swarm: the model catches only 6% of fraud in product W (1,044 cases) against 38% overall, so
+  most missed fraud sits in the largest product line.
+- The self-improving agent adopted a change on real data: deeper trees, validation PR-AUC +0.023
+  (95% interval +0.019 to +0.026).
+
 ## Operational notes
 
 - Training the seven serving candidates takes about 6 minutes on a two-core machine (random forest

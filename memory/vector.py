@@ -12,9 +12,10 @@ from pathlib import Path
 import chromadb
 from chromadb.config import Settings
 
+import datasets
 from memory.embedding import Embedder
 
-DEFAULT_PATH = Path(__file__).resolve().parent / "chroma"
+DEFAULT_PATH = Path(__file__).resolve().parent / f"chroma{datasets.memory_suffix()}"
 
 
 class VectorIndex:
