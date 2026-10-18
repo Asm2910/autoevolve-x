@@ -15,7 +15,7 @@ from agentkit.guardrails import REMOVED, UNTRUSTED_NOTICE
 from agentkit.llm import RecordingLLM, ReplayLLM, ScriptedLLM
 from agentkit.tracing import Observer, TraceLog
 from agents.graph import build_agent
-from agents.llm_proposer import FallbackProposer, LLMProposal, LLMProposer
+from agents.llm_proposer import FallbackProposer, LLMProposal, LLMProposer, ParamSetting
 from agents.proposers import RuleProposer
 from agents.spec import ExperimentSpec
 from memory.store import MemoryStore
@@ -77,7 +77,7 @@ def llm_proposer(llm, **kwargs):
 
 def proposals(n):
     """n distinct, valid proposals."""
-    return [LLMProposal(groups=["usage", "risk"], windows=[7, 30], max_depth=2 + i, hypothesis=f"depth {2 + i}")
+    return [LLMProposal(groups=["usage", "risk"], windows=[7, 30], settings=[ParamSetting(name="max_depth", value=2 + i)], hypothesis=f"depth {2 + i}")
             for i in range(n)]
 
 
@@ -136,7 +136,7 @@ def test_hitting_a_limit_is_not_hidden_by_the_fallback_proposer(store):
 
 # ---- memory and safety of proposals ------------------------------------------------------------
 def test_an_experiment_already_tried_is_never_run_twice(store):
-    repeated = LLMProposal(groups=["usage"], windows=[7], max_depth=4, hypothesis="same idea")
+    repeated = LLMProposal(groups=["usage"], windows=[7], settings=[ParamSetting(name="max_depth", value=4)], hypothesis="same idea")
     llm = ScriptedLLM(repeated, repeated, repeated, *proposals(3))
     state, runner = mission(llm_proposer(llm), store, iterations=2)
     assert len(runner.ran) == len(set(runner.ran)) == 2
@@ -145,9 +145,9 @@ def test_an_experiment_already_tried_is_never_run_twice(store):
 def test_out_of_bounds_and_foreign_parameters_are_refused_before_running(store):
     # (an invented feature group is covered in tests/unit/test_agent.py; three refusals in a row end a round)
     llm = ScriptedLLM(
-        LLMProposal(groups=["usage"], windows=[7], max_depth=50, hypothesis="absurd depth"),
-        LLMProposal(groups=["usage"], windows=[7], C=3.0, hypothesis="a logistic-regression knob on xgboost"),
-        LLMProposal(groups=["usage"], windows=[7], max_depth=4, hypothesis="valid"),
+        LLMProposal(groups=["usage"], windows=[7], settings=[ParamSetting(name="max_depth", value=50)], hypothesis="absurd depth"),
+        LLMProposal(groups=["usage"], windows=[7], settings=[ParamSetting(name="C", value=3.0)], hypothesis="a logistic-regression knob on xgboost"),
+        LLMProposal(groups=["usage"], windows=[7], settings=[ParamSetting(name="max_depth", value=4)], hypothesis="valid"),
     )
     state, runner = mission(llm_proposer(llm), store, iterations=1)
     assert state["history"][0]["hypothesis"] == "valid" and len(runner.ran) == 1
@@ -193,7 +193,7 @@ def test_instructions_hidden_in_memory_never_reach_the_prompt_intact(store):
 
 def test_a_hijacked_proposal_still_cannot_leave_the_allowed_actions(store):
     """Even if the model obeyed an injection, its output is only data that gets validated."""
-    obedient = LLMProposal(groups=["usage"], windows=[7], max_depth=99, hypothesis="as instructed")
+    obedient = LLMProposal(groups=["usage"], windows=[7], settings=[ParamSetting(name="max_depth", value=99)], hypothesis="as instructed")
     llm = ScriptedLLM(obedient, *proposals(1))
     state, runner = mission(llm_proposer(llm), store, iterations=1)
     assert all("99" not in key for key in runner.ran)
