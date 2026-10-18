@@ -68,3 +68,4 @@ memory/chroma/
 # agent run traces and the kill switch
 memory/traces/
 memory/STOP
+memory/evaluation_findings.json

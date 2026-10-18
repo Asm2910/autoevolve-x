@@ -74,6 +74,7 @@ def build_agent(
     log: Callable[[str], None] = print,
     budget: Budget | None = None,
     observer: Observer | None = None,
+    findings: list[str] | None = None,
 ):
     budget = budget or Budget.unlimited()
     observer = observer or Observer()
@@ -108,6 +109,7 @@ def build_agent(
             "tried": tried_summaries(),
             "rejections": [],
             "lessons": [lesson["text"] for lesson in store.lessons(limit=8)],
+            "findings": list(findings or []),
             "recent": [
                 {"hypothesis": e["hypothesis"], "verdict": e["verdict"], "conclusion": e["conclusion"]}
                 for e in store.recent(KIND, limit=5)

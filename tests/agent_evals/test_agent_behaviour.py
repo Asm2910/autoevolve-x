@@ -157,7 +157,8 @@ def test_out_of_bounds_and_foreign_parameters_are_refused_before_running(store):
 def test_no_agent_code_reads_the_test_split():
     """Structural check: only agentkit/data_access.py and the final evaluation may name it."""
     watched = [*(ROOT / "agents").glob("*.py"), *(ROOT / "agentkit").glob("*.py"), ROOT / "tools" / "experiment_runner.py",
-               ROOT / "scripts" / "run_agent.py", *(ROOT / "arena").glob("*.py"), ROOT / "scripts" / "run_arena.py"]
+               ROOT / "scripts" / "run_agent.py", *(ROOT / "arena").glob("*.py"), ROOT / "scripts" / "run_arena.py",
+               *(ROOT / "swarm").glob("*.py"), ROOT / "scripts" / "run_evaluation.py"]
     for path in watched:
         text = path.read_text()
         assert "test.parquet" not in text, f"{path.name} reads the test file directly"

@@ -8,21 +8,25 @@ Protocol (no peeking):
   2. choose each threshold on the validation snapshots
   3. score the test snapshots once with that frozen threshold
   4. bootstrap 95% confidence intervals on the test set
-The model with the best validation score is written to model_metadata.json and
-is the one the API serves.
+The judge (judge/utility.py) picks the model to serve from validation results alone: utility at the
+review cut-off, statistical ties, then cheapest to operate. `training.selection: pr_auc` restores
+the old rule (best validation score). The served model is written to model_metadata.json.
 """
 
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import os
+import time
 from datetime import UTC, datetime
 
 import joblib
 import numpy as np
 import pandas as pd
 
+from judge.utility import Candidate, UtilityConfig, judge
 from models.tracking import code_version, log_training
 from models.training import (
     ARTIFACT_DIR,
@@ -66,6 +70,7 @@ def main() -> None:
 
     grid = threshold_grid(config)
     fitted, val_probs, test_probs, thresholds, results = {}, {}, {}, {}, {}
+    cost = {}  # training seconds and model size, for the judge
 
     override = os.environ.get("AUTOEVOLVE_CANDIDATES")  # e.g. CI trains only the fast models
     candidates = (
@@ -81,7 +86,11 @@ def main() -> None:
         params = config["models"][name]
         print(f"\nTraining {name} ...")
         pipeline = build_pipeline(name, params, numeric, categorical, seed)
+        started = time.perf_counter()
         pipeline.fit(train[features], train[LABEL])
+        buffer = io.BytesIO()
+        joblib.dump(pipeline, buffer)
+        cost[name] = {"train_seconds": time.perf_counter() - started, "size_mb": buffer.tell() / 1e6}
 
         val_probs[name] = pipeline.predict_proba(validation[features])[:, 1]
         test_probs[name] = pipeline.predict_proba(test[features])[:, 1]
@@ -105,7 +114,18 @@ def main() -> None:
         results[name]["test_ci95"] = {k: interval(v) for k, v in draws[name].items()}
 
     metric = training["selection_metric"]
-    served = max(results, key=lambda m: results[m]["validation"][metric])
+    selection = training.get("selection", "utility")
+    verdict = None
+    if selection == "utility":
+        verdict = judge(
+            [Candidate(n, val_probs[n], cost[n]["train_seconds"], cost[n]["size_mb"]) for n in results],
+            y_val, UtilityConfig.from_config(config), review_fraction, n_boot=200, seed=seed)
+        served = verdict.winner
+        (PROCESSED_DIR / "judge_report.md").write_text(verdict.markdown())
+        (PROCESSED_DIR / "judge_verdict.json").write_text(json.dumps(verdict.to_dict(), indent=2))
+        print("\n" + verdict.markdown())
+    else:
+        served = max(results, key=lambda m: results[m]["validation"][metric])
 
     for name in results:
         if name == served:
@@ -128,6 +148,7 @@ def main() -> None:
         "artifact": f"{served}.joblib",
         "threshold": thresholds[served],
         "selection_metric": metric,
+        "selection": {"method": selection, "rationale": verdict.rationale if verdict else f"best validation {metric}"},
         "probability_calibrated": False,
         "features": features,
         "numeric_features": numeric,

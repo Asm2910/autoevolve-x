@@ -52,7 +52,9 @@ python -m scripts.explain_model
 
 # 4. fill the memory and run the agent
 python -m scripts.memory_cli ingest
+python -m scripts.run_evaluation                            # four evaluation agents report on the model
 python -m scripts.run_agent --iterations 4                  # rule-based, no API key needed
+python -m scripts.run_agent --iterations 4 --use-findings   # the proposer also reads the evaluation findings
 python -m scripts.run_agent --iterations 4 --proposer llm   # Claude proposes, needs ANTHROPIC_API_KEY
 touch memory/STOP                                           # from another terminal: stop a running agent
 
