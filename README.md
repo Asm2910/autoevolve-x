@@ -52,6 +52,7 @@ python -m scripts.explain_model
 
 # 4. fill the memory and run the agent
 python -m scripts.memory_cli ingest
+python -m scripts.run_data_review                           # four data agents check the sources and features
 python -m scripts.run_evaluation                            # four evaluation agents report on the model
 python -m scripts.run_agent --iterations 4                  # rule-based, no API key needed
 python -m scripts.run_agent --iterations 4 --use-findings   # the proposer also reads the evaluation findings

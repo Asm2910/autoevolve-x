@@ -69,3 +69,4 @@ memory/chroma/
 memory/traces/
 memory/STOP
 memory/evaluation_findings.json
+memory/data_findings.json
