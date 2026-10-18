@@ -310,6 +310,8 @@ class EvaluationReport:
     findings: list[Finding]
     summaries: dict[str, dict]
     failed: dict[str, str]
+    title: str = "Evaluation swarm report"
+    scope: str = "Validation data only."
 
     @property
     def verdict(self) -> str:
@@ -330,7 +332,7 @@ class EvaluationReport:
                 "findings": [f.model_dump() for f in self.findings], "hypotheses": self.hypotheses()}
 
     def markdown(self) -> str:
-        lines = ["# Evaluation swarm report", "", f"Overall: **{self.verdict}**. Validation data only.", ""]
+        lines = [f"# {self.title}", "", f"Overall: **{self.verdict}**. {self.scope}", ""]
         if self.failed:
             lines += ["Agents that failed (their findings are missing):", *[f"- {a}: {e}" for a, e in self.failed.items()], ""]
         for finding in self.findings:
@@ -349,14 +351,21 @@ class EvaluationReport:
 
 
 class EvaluationSwarm:
-    def __init__(self, context: EvalContext, observer: Observer | None = None, budget: Budget | None = None) -> None:
+    """Runs a set of agents over one shared context. The data swarm reuses this with other agents."""
+
+    agent_classes: tuple = AGENTS
+    title = "Evaluation swarm report"
+    scope = "Validation data only."
+    request_model: type[BaseModel] = EvalRequest
+
+    def __init__(self, context, observer: Observer | None = None, budget: Budget | None = None) -> None:
         self.context = context
         self.observer = observer or Observer()
         self.budget = budget
-        self.agents = [cls(context, observer=self.observer, budget=budget) for cls in AGENTS]
+        self.agents = [cls(context, observer=self.observer, budget=budget) for cls in self.agent_classes]
 
-    def run(self, request: EvalRequest | None = None) -> EvaluationReport:
-        request = request or EvalRequest()
+    def run(self, request: BaseModel | None = None) -> EvaluationReport:
+        request = request or self.request_model()
         findings: list[Finding] = []
         summaries: dict[str, dict] = {}
         failed: dict[str, str] = {}
@@ -374,4 +383,4 @@ class EvaluationSwarm:
         for finding in findings:
             metrics.EVAL_FINDINGS.labels(finding.agent, finding.severity).inc()
         findings.sort(key=lambda f: SEVERITY_ORDER.get(f.severity, 3))
-        return EvaluationReport(findings, summaries, failed)
+        return EvaluationReport(findings, summaries, failed, self.title, self.scope)

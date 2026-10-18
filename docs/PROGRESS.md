@@ -111,6 +111,31 @@ are written to `data/processed/judge_report.md` and stored in `model_metadata.js
 Because fixed review capacity makes utility track recall at the cut-off, the judge's main value is the
 explicit prices, the tie handling and the operating-cost rule, not a different ranking of quality.
 
+## Phase 14: data swarm
+
+`swarm/data.py` adds four more agents, built like the evaluation agents and generic over any set of tables
+(`DataContext` plus a `TableSpec` per table), so the same agents will check the real-data adapter:
+
+- **Schema:** expected columns, timestamp and numeric types, allowed category values.
+- **Quality:** missing values (sampled), duplicate ids, constant columns, negative values where impossible,
+  timestamps outside the data window.
+- **Relationships:** rows with no matching customer, share of customers present in each source, hot keys,
+  enough history before the first snapshot, duplicate or empty labels.
+- **Features:** tests every training feature against the label and corrects for the number of tests
+  (Benjamini-Hochberg, 5% false discovery rate). A feature counts only if it survives the correction and
+  its effect is large enough to matter (|AUC - 0.5| of at least 0.03, or Cramer's V for categories); with
+  100k+ rows even trivial effects are "significant". It ranks feature groups and windows, proposes
+  groups to enrich or test dropping, and flags any single feature that separates the classes almost
+  perfectly as possible leakage.
+
+`python -m scripts.run_data_review` writes `data_review_report.{md,json}` and `memory/data_findings.json`;
+`run_agent --use-findings` reads both swarms' ideas as untrusted evidence. The feature agent reads the
+training split only.
+
+Real result on the telecom data: schemas and quality are clean. One real finding: only 55% of customers
+have any risk event, so the risk group partly encodes "has a risk record". Usage is the strongest
+group (57 of 63 features carry signal), then risk, recharge, network, and customer last (1 of 8).
+
 ## Operational notes
 
 - Training the seven serving candidates takes about 6 minutes on a two-core machine (random forest

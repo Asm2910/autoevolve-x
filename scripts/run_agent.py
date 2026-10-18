@@ -75,7 +75,7 @@ def main() -> None:
     parser.add_argument("--iterations", type=int, default=None, help="experiments to run (default: from config)")
     parser.add_argument("--proposer", choices=["rules", "llm"], default="rules")
     parser.add_argument("--use-findings", action="store_true",
-                        help="give the proposer the evaluation swarm's ideas (run scripts.run_evaluation first)")
+                        help="give the proposer the evaluation and data swarms' ideas (run scripts.run_evaluation / run_data_review first)")
     parser.add_argument("--embedder", choices=["minilm", "hashing", "none"], default="minilm")
     args = parser.parse_args()
 
@@ -97,9 +97,12 @@ def main() -> None:
     runner.set_champion(champion)
 
     findings = []
-    findings_path = PROJECT_ROOT / "memory" / "evaluation_findings.json"
-    if args.use_findings and findings_path.exists():
-        findings = json.loads(findings_path.read_text())
+    if args.use_findings:
+        for name in ("evaluation_findings.json", "data_findings.json"):
+            path = PROJECT_ROOT / "memory" / name
+            if path.exists():
+                findings += json.loads(path.read_text())
+    if findings:
         print(f"Evaluation findings given to the proposer: {len(findings)}")
     agent = build_agent(runner, store, proposer, config, dataset_sha256, budget=budget, observer=observer, findings=findings)
     state = agent.invoke(
