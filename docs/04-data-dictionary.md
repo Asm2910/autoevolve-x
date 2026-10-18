@@ -1,6 +1,6 @@
 # Data dictionary
 
-The model reads 254 features for each subscriber on each snapshot date. This page explains where they come from, how they are named and what each group means. The exact column list is in `data/processed/feature_manifest.json`.
+This page covers two datasets that are never combined. The **telecom** model reads 254 features for each subscriber on each snapshot date (sections up to "The synthetic world"). The **IEEE-CIS** model reads 440 features for each payment (the last section). The exact column lists are in `data/processed/feature_manifest.json` and `data/ieee/processed/feature_manifest.json`.
 
 ## Rows and label
 
@@ -129,3 +129,48 @@ The data is synthetic, so these settings are known (from `configs/data.yaml`).
 | Label horizon | 30 days |
 
 Fraud is decided first and events are generated from it, so a model cannot read the label off the features. Only about 0.9% of snapshot rows are positive, because confirmation is delayed, only part of fraud is confirmed, and known fraud is excluded.
+
+## IEEE-CIS (real e-commerce card fraud)
+
+This is the real-data check. It is the Kaggle "IEEE-CIS Fraud Detection" data from Vesta: e-commerce card payments, not telecom. It is not combined with the telecom data. Only the two labelled training files (`train_transaction.csv`, `train_identity.csv`) are used, joined on `TransactionID`, with the project's own time split. Many of its columns are masked by the data owner, so their exact meaning is not public. The descriptions below say what the columns are, not more than that.
+
+### Rows, label and split
+
+| Item | Detail |
+| --- | --- |
+| Row | One payment. `TransactionID` identifies it |
+| Label | `risk_label`, from the source column `isFraud`: 1 if the payment was later confirmed as fraud |
+| Sample | 300,000 payments drawn at random from the 590,540 in the file, time order kept (about 3.5% fraud in the full file). Card history is computed on all 590,540 payments before sampling |
+| Time | `TransactionDT` is a seconds offset, not a date. Dates here add that offset to 2017-11-30 and are used only to order and label the split |
+| Split | By time: earliest 60% train (about 180,000 rows), next 20% validation (about 60,000), last 20% sealed test (60,000, 2,060 fraud). Rows with the same time stay together |
+| Identity | Only about 24% of payments have an identity record. `identity__has_identity` says whether one exists |
+
+### Naming
+
+Columns are named `<group>__<metric>`, like the telecom columns, but there are no time windows. The config keeps a single placeholder window (7) so the agent's experiment specification stays valid.
+
+### Feature groups (440 in total, 31 categorical)
+
+| Group | Features | What it describes |
+| --- | --- | --- |
+| `transaction` | 6 | `amount`, `log_amount`, `cents` (the cents part of the amount), `hour`, `weekday` (derived from the time offset), and `product` (product code, categorical) |
+| `card` | 6 | Masked card identifiers (`card1`, `card2`, `card3`, `card5`), and the card `network` and `type` (categorical) |
+| `address` | 4 | Billing region and country codes (`addr1`, `addr2`) and two distance measures (`dist1`, `dist2`) |
+| `email` | 3 | Purchaser and recipient e-mail domains (categorical) and whether they are the same |
+| `counts` | 14 | `c1` to `c14`: masked counters, for example how many addresses are linked to a card |
+| `timedeltas` | 15 | `d1` to `d15`: masked time gaps, for example days since an earlier event |
+| `match` | 9 | `m1` to `m9`: masked match flags (categorical) |
+| `vesta` | 339 | `v1` to `v339`: engineered features supplied by Vesta, with no public description |
+| `identity` | 39 | `has_identity` and the masked identity and network fields `id_01` to `id_38`, many categorical (browser, operating system, screen and similar) |
+| `device` | 2 | `type` and `info` of the device (categorical) |
+| `history` | 3 | Built by this project, per card, from earlier payments only: `card_prior_count`, `amount_vs_card_mean` (amount against the card's own average so far) and `seconds_since_card_prev` |
+
+The `history` features use nothing from the future, so computing them before the split does not leak. A "card" here is the pair of masked `card1` and `addr1` values, so it is an approximation of one real card.
+
+### Handling of categories
+
+Categorical columns keep their 25 most common values in the training rows. Every other value, and any value never seen in training, becomes `other`. The cap uses training rows only.
+
+### What the evaluation swarm found
+
+Payments with no identity record had fraud caught at about 6.5%, against 37.8% overall. This is a finding about this sample and this model, not a general rule.
