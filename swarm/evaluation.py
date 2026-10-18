@@ -180,7 +180,7 @@ class SegmentAgent(_EvalAgent):
         rng = np.random.default_rng(c.seed + 1)
         caught = (c.scores >= c.cutoff).astype(float)
         overall_recall = float(caught[c.y == 1].mean()) if c.y.sum() else float("nan")
-        rows = []
+        rows, seen = [], {}  # seen: which accounts a group covers -> its index, so identical groups merge
         for column in c.categorical:
             values = c.frame[column].astype("object").where(c.frame[column].notna(), "__missing__").astype(str).to_numpy()
             for level in np.unique(values):
@@ -188,11 +188,16 @@ class SegmentAgent(_EvalAgent):
                 positives = int(c.y[mask].sum())
                 if mask.sum() < req.min_segment_rows or positives < req.min_segment_positives:
                     continue
-                rows.append((column, level, mask, positives))
+                signature = hash(mask.tobytes())
+                if signature in seen:
+                    rows[seen[signature]][4].append(f"{column.split('__')[-1]}={level}")
+                    continue
+                seen[signature] = len(rows)
+                rows.append((column, level, mask, positives, []))
         tests = max(len(rows), 1)
         alpha = req.alpha / tests  # Bonferroni: many groups are tested, so demand stronger evidence
         table, flagged = [], []
-        for column, level, mask, positives in rows:
+        for column, level, mask, positives, aliases in rows:
             hits = caught[mask & (c.y == 1)]
             recall = float(hits.mean())
             draws = hits[rng.integers(0, len(hits), (req.n_boot, len(hits)))].mean(axis=1)
@@ -210,6 +215,8 @@ class SegmentAgent(_EvalAgent):
                     evidence=table[-1] | {"overall_recall": round(overall_recall, 4), "groups_tested": tests},
                     hypothesis=f"Fraud in {short}={level} is caught less often; try features or settings that "
                                f"help that group (for example another feature group or a deeper model).")))
+                if aliases:
+                    flagged[-1][1].detail += f" The same accounts are also {', '.join(aliases[:4])}{'...' if len(aliases) > 4 else ''}."
         flagged.sort(key=lambda item: item[0], reverse=True)  # biggest shortfall in fraud cases first
         findings = [finding for _, finding in flagged[: req.top_n]]
         if len(flagged) > req.top_n:

@@ -158,13 +158,14 @@ def test_no_agent_code_reads_the_test_split():
     """Structural check: only agentkit/data_access.py and the final evaluation may name it."""
     watched = [*(ROOT / "agents").glob("*.py"), *(ROOT / "agentkit").glob("*.py"), ROOT / "tools" / "experiment_runner.py",
                ROOT / "scripts" / "run_agent.py", *(ROOT / "arena").glob("*.py"), ROOT / "scripts" / "run_arena.py",
-               *(ROOT / "swarm").glob("*.py"), ROOT / "scripts" / "run_evaluation.py", ROOT / "scripts" / "run_data_review.py"]
+               *(ROOT / "swarm").glob("*.py"), ROOT / "scripts" / "run_evaluation.py", ROOT / "scripts" / "run_data_review.py", *(ROOT / "research").glob("*.py"), ROOT / "scripts" / "ask.py",
+               *(ROOT / "mission").glob("*.py"), ROOT / "scripts" / "run_mission.py"]
     for path in watched:
         text = path.read_text()
         assert "test.parquet" not in text, f"{path.name} reads the test file directly"
         assert 'load_split("test"' not in text, f"{path.name} asks for the test split"
         if path.name != "data_access.py":
-            assert "read_parquet" not in text or path.name in {"run_arena.py", "run_data_review.py"}, f"{path.name} reads parquet directly"
+            assert "read_parquet" not in text or path.name in {"run_arena.py", "run_data_review.py", "services.py"}, f"{path.name} reads parquet directly"
 
 
 # ---- hostile text -------------------------------------------------------------------------------------

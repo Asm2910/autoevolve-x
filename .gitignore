@@ -73,3 +73,4 @@ memory/data_findings.json
 data/ieee/
 models/artifacts_ieee/
 memory/chroma_ieee/
+PHASE*_NOTES.md
