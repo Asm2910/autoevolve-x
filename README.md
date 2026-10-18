@@ -161,3 +161,5 @@ The API key for the language-model proposer comes from the environment. Copy `.e
 MIT. See [LICENSE](LICENSE).
 
 **Ask the project:** `python -m scripts.ask "your question" [--llm]` answers from the docs, reports and memory with sources (see docs/PROGRESS.md, Phase 17).
+
+**Mission control:** the dashboard has a Mission control page (start, watch and stop a mission) and an Ask the project page; see docs/PROGRESS.md, Phase 18.
