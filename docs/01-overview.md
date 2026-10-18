@@ -16,7 +16,7 @@ Each round recalls past lessons, proposes one experiment, runs it and records th
 
 ## Results
 
-On the sealed test set the champion model beats logistic regression by 0.061 PR-AUC, and the paired confidence interval excludes zero. PR-AUC is the headline metric because only about 0.9% of rows are fraud.
+**Dataset v1 (seed 42).** On the sealed test set the champion model beat logistic regression by 0.061 PR-AUC, and the paired confidence interval excludes zero. PR-AUC is the headline metric because only about 0.9% of rows are fraud.
 
 | Model | PR-AUC on test | 95% CI |
 | --- | --- | --- |
@@ -24,11 +24,21 @@ On the sealed test set the champion model beats logistic regression by 0.061 PR-
 | Logistic regression | 0.211 | not reported |
 | Paired difference | +0.061 | +0.030 to +0.094 |
 
-The score is about 30 times the base rate. The agent ran 10 or more experiments and adopted none, so every difference it found sat inside noise.
+The score is about 30 times the base rate. On v1 the agent ran 10 or more experiments and adopted none, so every difference it found sat inside noise.
+**Dataset v2 (current, seed 20261018, fresh sealed test).** The model choice was made on validation only; the test table below reports every model once and was not used to choose. Telecom: 381 positives in 46,291 test rows. IEEE-CIS (real e-commerce fraud, a separate validation, not telecom data): 2,060 positives in 60,000 test rows.
+
+| Dataset | Served model | Test PR-AUC [95% CI] | Logistic regression |
+| --- | --- | --- | --- |
+| Telecom v2 | xgboost | 0.292 [0.243, 0.356] | 0.213 [0.173, 0.265] |
+| IEEE-CIS | lightgbm | 0.448 [0.425, 0.472] | 0.185 [0.173, 0.200] |
+
+On telecom v2 the top boosted and bagged models are statistically tied (random forest 0.300, extra trees 0.300, xgboost 0.292), which is why the judge chose by cost to run rather than by the highest point estimate. The paired difference against logistic regression has not been recomputed for v2.
+
+On the IEEE data the agent did adopt a change: deeper trees, +0.018 validation PR-AUC at depth 4, with an interval above zero. See [Architecture](ARCHITECTURE.md) for how the v2 platform decides.
 
 ## What it does not claim
 
-- The data is synthetic, so the 0.272 says the pipeline works, not how it would do on real fraud.
+- The data is synthetic, so the v1 score of 0.272 says the pipeline works, not how it would do on real fraud.
 - The agent adopted nothing. The lift over logistic regression comes from the original model choice, not from the agent.
 - Drift detection recommends re-running the agent. It does not ingest new data, because the synthetic pipeline has no ingestion step.
 - Probabilities are not calibrated, so read scores as rankings rather than true fraud rates.
